@@ -50,6 +50,9 @@ export function nextStatusPatch(
 
 interface CreateOptions {
   priorities?: string[] | null;
+  due_at?: number | null;
+  estimated_hours?: number | null;
+  notes?: string;
   parent_id?: string | null;
   depth?: number;
 }
@@ -57,7 +60,14 @@ interface CreateOptions {
 /** Create a new local todo with plugin-compatible fields. */
 export function createTodo(
   text: string,
-  { priorities = null, parent_id = null, depth = 0 }: CreateOptions = {},
+  {
+    priorities = null,
+    due_at = null,
+    estimated_hours = null,
+    notes = '',
+    parent_id = null,
+    depth = 0,
+  }: CreateOptions = {},
   origin = 'local'
 ): Todo {
   return {
@@ -69,9 +79,9 @@ export function createTodo(
     created_at: nowSeconds(),
     completed_at: null,
     priorities,
-    estimated_hours: null,
-    due_at: null,
-    notes: '',
+    estimated_hours,
+    due_at,
+    notes,
     parent_id,
     depth,
     _origin: origin,

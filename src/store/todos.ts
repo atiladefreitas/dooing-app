@@ -20,6 +20,9 @@ export interface SyncInfo {
 
 interface CreateOpts {
   priorities?: string[] | null;
+  due_at?: number | null;
+  estimated_hours?: number | null;
+  notes?: string;
 }
 
 interface TodosState {
@@ -60,7 +63,12 @@ export const useTodos = create<TodosState>()(
       hydrated: false,
 
       add: (text, opts) => {
-        const todo = createTodo(text, { priorities: opts?.priorities ?? null });
+        const todo = createTodo(text, {
+          priorities: opts?.priorities ?? null,
+          due_at: opts?.due_at ?? null,
+          estimated_hours: opts?.estimated_hours ?? null,
+          notes: opts?.notes ?? '',
+        });
         set((s) => ({ todos: [...s.todos, todo] }));
         return todo;
       },
@@ -70,6 +78,9 @@ export const useTodos = create<TodosState>()(
         if (!parent) return null;
         const child = createTodo(text, {
           priorities: opts?.priorities ?? null,
+          due_at: opts?.due_at ?? null,
+          estimated_hours: opts?.estimated_hours ?? null,
+          notes: opts?.notes ?? '',
           parent_id: parentId,
           depth: parent.depth + 1,
         });

@@ -1,8 +1,9 @@
 import { router, Stack } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { useMemo, useRef } from 'react';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AddTodoSheet, AddTodoSheetRef } from '@/components/add-todo-sheet';
 import { TodoItem } from '@/components/todo-item';
 import { orderForDisplay } from '@/lib/todo';
 import { useTodos } from '@/store/todos';
@@ -25,7 +26,7 @@ function EmptyState() {
     <View className="flex-1 items-center justify-center gap-2 py-24">
       <Text className="text-lg text-neutral-300">No todos yet</Text>
       <Text className="text-center text-sm text-neutral-500">
-        Add one below, or tap Scan to import from Neovim.
+        Tap the + button to add one, or Scan to import from Neovim.
       </Text>
     </View>
   );
@@ -33,19 +34,11 @@ function EmptyState() {
 
 export default function HomeScreen() {
   const todos = useTodos((s) => s.todos);
-  const add = useTodos((s) => s.add);
   const toggle = useTodos((s) => s.toggleStatus);
-  const [text, setText] = useState('');
+  const sheetRef = useRef<AddTodoSheetRef>(null);
 
   const data = useMemo(() => orderForDisplay(todos), [todos]);
   const remaining = todos.filter((t) => !t.done).length;
-
-  const submit = () => {
-    const value = text.trim();
-    if (!value) return;
-    add(value);
-    setText('');
-  };
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-neutral-950">
@@ -55,7 +48,13 @@ export default function HomeScreen() {
         data={data}
         keyExtractor={(t) => t.id}
         renderItem={({ item }) => (
-          <TodoItem todo={item} onToggle={() => toggle(item.id)} />
+          <TodoItem
+            todo={item}
+            onToggle={() => toggle(item.id)}
+            onLongPress={() =>
+              sheetRef.current?.present({ id: item.id, text: item.text })
+            }
+          />
         )}
         ListHeaderComponent={
           data.length > 0 ? (
@@ -65,26 +64,19 @@ export default function HomeScreen() {
           ) : null
         }
         ListEmptyComponent={EmptyState}
-        contentContainerStyle={{ padding: 16, gap: 2, flexGrow: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 2, flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
       />
 
-      <View className="flex-row items-center gap-2 border-t border-neutral-800 px-4 py-2">
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          onSubmitEditing={submit}
-          returnKeyType="done"
-          placeholder="Add a todo…  (use #tags)"
-          placeholderTextColor="#666"
-          className="flex-1 rounded-lg bg-neutral-900 px-3 py-2 text-base text-white"
-        />
-        <Pressable
-          onPress={submit}
-          className="rounded-lg bg-blue-500 px-4 py-2 active:opacity-70">
-          <Text className="font-semibold text-white">Add</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        onPress={() => sheetRef.current?.present()}
+        accessibilityLabel="Add task"
+        style={{ elevation: 8 }}
+        className="absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full bg-blue-500 shadow-lg shadow-blue-500/40 active:opacity-80">
+        <Text className="text-3xl font-light leading-9 text-white">+</Text>
+      </Pressable>
+
+      <AddTodoSheet ref={sheetRef} />
     </SafeAreaView>
   );
 }

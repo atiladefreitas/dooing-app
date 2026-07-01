@@ -41,9 +41,10 @@ function TodoText({ text, done }: { text: string; done: boolean }) {
 interface Props {
   todo: Todo;
   onToggle: () => void;
+  onLongPress?: () => void;
 }
 
-export function TodoItem({ todo, onToggle }: Props) {
+export function TodoItem({ todo, onToggle, onLongPress }: Props) {
   const status = getStatus(todo);
   const due = todo.due_at ? formatDue(todo.due_at) : null;
   const priorities = todo.priorities ?? [];
@@ -54,6 +55,8 @@ export function TodoItem({ todo, onToggle }: Props) {
       onPress={() =>
         router.push({ pathname: '/todo/[id]', params: { id: todo.id } })
       }
+      onLongPress={onLongPress}
+      delayLongPress={300}
       style={{ marginLeft: todo.depth * 20 }}
       className="flex-row items-start gap-3 rounded-lg px-2 py-2 active:bg-neutral-900">
       <StatusCheckbox status={status} onPress={onToggle} />
