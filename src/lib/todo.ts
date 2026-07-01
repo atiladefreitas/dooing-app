@@ -178,7 +178,10 @@ export function compareTodos(a: Todo, b: Todo): number {
  * compareTodos, and `depth` recomputed from the actual tree so it can never
  * drift. Orphans (parent_id points to a missing todo) are promoted to top-level.
  */
-export function orderForDisplay(todos: Todo[]): Todo[] {
+export function orderForDisplay(
+  todos: Todo[],
+  collapsed?: ReadonlySet<string>
+): Todo[] {
   const ids = new Set(todos.map((t) => t.id));
   const byParent = new Map<string, Todo[]>();
   const roots: Todo[] = [];
@@ -197,6 +200,8 @@ export function orderForDisplay(todos: Todo[]): Todo[] {
   const result: Todo[] = [];
   const walk = (node: Todo, depth: number) => {
     result.push(node.depth === depth ? node : { ...node, depth });
+    // Collapsed nodes hide their whole subtree.
+    if (collapsed?.has(node.id)) return;
     const children = (byParent.get(node.id) ?? []).slice().sort(compareTodos);
     for (const child of children) walk(child, depth + 1);
   };

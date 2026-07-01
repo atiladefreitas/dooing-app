@@ -29,6 +29,8 @@ interface TodosState {
   todos: Todo[];
   lastSync: SyncInfo | null;
   hydrated: boolean;
+  /** UI-only: ids of parent todos whose subtree is collapsed in the list. */
+  collapsed: Record<string, boolean>;
 
   /** Add a top-level todo. Returns the created todo. */
   add: (text: string, opts?: CreateOpts) => Todo;
@@ -51,6 +53,8 @@ interface TodosState {
     raw: unknown[],
     host: string
   ) => { imported: number; updated: number };
+  /** Toggle whether a todo's subtree is collapsed in the list. */
+  toggleCollapsed: (id: string) => void;
   /** Clear all local data. */
   reset: () => void;
 }
@@ -61,6 +65,7 @@ export const useTodos = create<TodosState>()(
       todos: [],
       lastSync: null,
       hydrated: false,
+      collapsed: {},
 
       add: (text, opts) => {
         const todo = createTodo(text, {
@@ -150,12 +155,20 @@ export const useTodos = create<TodosState>()(
         return { imported, updated };
       },
 
-      reset: () => set({ todos: [], lastSync: null }),
+      toggleCollapsed: (id) => {
+        set((s) => ({ collapsed: { ...s.collapsed, [id]: !s.collapsed[id] } }));
+      },
+
+      reset: () => set({ todos: [], lastSync: null, collapsed: {} }),
     }),
     {
       name: 'dooing-todos',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ todos: s.todos, lastSync: s.lastSync }),
+      partialize: (s) => ({
+        todos: s.todos,
+        lastSync: s.lastSync,
+        collapsed: s.collapsed,
+      }),
       onRehydrateStorage: () => (state) => {
         if (state) state.hydrated = true;
       },
