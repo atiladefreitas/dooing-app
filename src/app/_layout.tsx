@@ -1,18 +1,41 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import '@/global.css';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+
+import { useTodos } from '@/store/todos';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+const BG = '#0a0a0a';
+
+export default function RootLayout() {
+  const hydrated = useTodos((s) => s.hydrated);
+
+  useEffect(() => {
+    if (hydrated) SplashScreen.hideAsync();
+  }, [hydrated]);
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <>
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: BG },
+          headerTintColor: '#fff',
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: BG },
+        }}>
+        <Stack.Screen name="index" options={{ title: 'Dooing' }} />
+        <Stack.Screen name="todo/[id]" options={{ title: 'Edit todo' }} />
+        <Stack.Screen
+          name="scan"
+          options={{ presentation: 'modal', title: 'Scan QR' }}
+        />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+      </Stack>
+    </>
   );
 }
