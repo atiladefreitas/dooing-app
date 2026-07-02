@@ -8,7 +8,13 @@
     "scheme": "dooingapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Dooing connects to your computer on the local network to import todos from the Neovim plugin."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,6 +24,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "usesCleartextTraffic": true,
       "package": "com.anonymous.dooingapp"
     },
     "web": {
@@ -32,6 +39,13 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Dooing to scan the QR code shared by the Neovim plugin.",
+          "barcodeScannerEnabled": true
         }
       ]
     ],

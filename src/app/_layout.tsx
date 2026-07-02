@@ -35,7 +35,7 @@ export default function RootLayout() {
           <Stack.Screen name="todo/[id]" options={{ title: 'Edit todo' }} />
           <Stack.Screen
             name="scan"
-            options={{ presentation: 'modal', title: 'Scan QR' }}
+            options={{ presentation: 'modal', headerShown: false }}
           />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         </Stack>
