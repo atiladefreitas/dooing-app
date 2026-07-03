@@ -4,6 +4,7 @@ import { FlatList, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AddTodoSheet, AddTodoSheetRef } from "@/components/add-todo-sheet";
+import { TodoActionsSheet, TodoActionsSheetRef } from "@/components/todo-actions-sheet";
 import { TodoItem } from "@/components/todo-item";
 import { orderForDisplay } from "@/lib/todo";
 import { useTodos } from "@/store/todos";
@@ -42,6 +43,7 @@ export default function HomeScreen() {
   const collapsedMap = useTodos((s) => s.collapsed);
   const toggleCollapsed = useTodos((s) => s.toggleCollapsed);
   const sheetRef = useRef<AddTodoSheetRef>(null);
+  const actionsRef = useRef<TodoActionsSheetRef>(null);
 
   const collapsedSet = useMemo(
     () => new Set(Object.keys(collapsedMap).filter((id) => collapsedMap[id])),
@@ -71,7 +73,7 @@ export default function HomeScreen() {
           <TodoItem
             todo={item}
             onToggle={() => toggle(item.id)}
-            onLongPress={() => sheetRef.current?.present({ id: item.id, text: item.text })}
+            onLongPress={() => actionsRef.current?.present({ id: item.id, text: item.text })}
             hasChildren={(childCount[item.id] ?? 0) > 0}
             childCount={childCount[item.id] ?? 0}
             collapsed={collapsedSet.has(item.id)}
@@ -97,6 +99,10 @@ export default function HomeScreen() {
       </Pressable>
 
       <AddTodoSheet ref={sheetRef} />
+      <TodoActionsSheet
+        ref={actionsRef}
+        onAddSubtask={(target) => sheetRef.current?.present(target)}
+      />
     </SafeAreaView>
   );
 }

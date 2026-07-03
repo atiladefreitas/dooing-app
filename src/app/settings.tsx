@@ -8,9 +8,7 @@ import { useTodos } from "@/store/todos";
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View className="gap-1">
-      <Text className="text-xs font-semibold tracking-wide uppercase text-neutral-500">
-        {label}
-      </Text>
+      <Text className="text-xs font-semibold tracking-wide uppercase text-neutral-500">{label}</Text>
       <Text className="text-base text-neutral-200">{value}</Text>
     </View>
   );
@@ -36,8 +34,7 @@ export default function SettingsScreen() {
       const { imported, updated } = await importFromHost(lastSync.host);
       Alert.alert("Synced", `${imported} new, ${updated} updated.`);
     } catch (err) {
-      const message =
-        err instanceof ImportError ? err.message : "Something went wrong syncing.";
+      const message = err instanceof ImportError ? err.message : "Something went wrong syncing.";
       Alert.alert("Sync failed", message);
     } finally {
       setSyncing(false);
@@ -52,11 +49,7 @@ export default function SettingsScreen() {
       />
       <Row
         label="Last sync"
-        value={
-          lastSync
-            ? `${lastSync.host}\n${new Date(lastSync.at * 1000).toLocaleString()}`
-            : "Never synced"
-        }
+        value={lastSync ? `${lastSync.host}\n${new Date(lastSync.at * 1000).toLocaleString()}` : "Never synced"}
       />
 
       <Pressable
@@ -69,23 +62,21 @@ export default function SettingsScreen() {
         <Pressable
           onPress={resync}
           disabled={syncing}
-          className="flex-row gap-2 justify-center items-center py-3 rounded-lg border border-neutral-700 active:opacity-70">
+          className="flex-row gap-2 justify-center items-center py-3 rounded-lg border active:opacity-70 border-neutral-700">
           {syncing ? <ActivityIndicator color="#a3a3a3" /> : null}
-          <Text className="font-semibold text-neutral-200">
-            {syncing ? "Syncing…" : "Sync now from last host"}
-          </Text>
+          <Text className="font-semibold text-neutral-200">{syncing ? "Syncing…" : "Sync now from last host"}</Text>
         </Pressable>
       ) : null}
 
       <Pressable
         onPress={confirmReset}
-        className="items-center py-3 rounded-lg border border-red-500/40 active:opacity-70">
+        className="items-center py-3 rounded-lg border active:opacity-70 border-red-500/40">
         <Text className="font-semibold text-red-400">Clear all data</Text>
       </Pressable>
 
       <Text className="mt-auto text-xs text-neutral-600">
-        Dooing syncs from the Neovim plugin over your local network. Run the plugin&apos;s
-        share action to expose http://&lt;ip&gt;:7283, then scan the QR.
+        Dooing syncs from the Neovim plugin over your local network. Run the plugin&apos;s share action to expose
+        http://&lt;ip&gt;:7283, then scan the QR.
       </Text>
     </View>
   );

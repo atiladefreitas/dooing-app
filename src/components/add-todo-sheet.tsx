@@ -2,8 +2,8 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetModal,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import {
   forwardRef,
@@ -126,7 +126,9 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
       backgroundStyle={styles.background}
       handleIndicatorStyle={styles.handle}
       onDismiss={reset}>
-      <BottomSheetView style={styles.content}>
+      <BottomSheetScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled">
         <Text className="text-lg font-semibold text-white">
           {parent ? 'New subtask' : 'New task'}
         </Text>
@@ -217,7 +219,7 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
             {parent ? 'Add subtask' : 'Add task'}
           </Text>
         </Pressable>
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 });

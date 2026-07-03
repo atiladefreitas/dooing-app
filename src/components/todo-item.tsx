@@ -1,4 +1,3 @@
-import { router } from "expo-router";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
@@ -66,39 +65,19 @@ export function TodoItem({
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/todo/[id]", params: { id: todo.id } })}
+      onPress={onToggle}
       onLongPress={onLongPress}
       delayLongPress={300}
       style={{ marginLeft: todo.depth * 20 }}
       className="flex-row gap-2 items-start py-2 rounded-lg active:bg-neutral-900">
-      {hasChildren ? (
-        <Pressable
-          hitSlop={10}
-          onPress={onToggleCollapse}
-          accessibilityRole="button"
-          accessibilityLabel={collapsed ? "Expand subtasks" : "Collapse subtasks"}
-          className="pt-0.5 active:opacity-60">
-          {collapsed ? (
-            <ChevronRight
-              size={18}
-              color="#a3a3a3"
-              strokeWidth={2.5}
-            />
-          ) : (
-            <ChevronDown
-              size={18}
-              color="#a3a3a3"
-              strokeWidth={2.5}
-            />
-          )}
-        </Pressable>
-      ) : (
-        <View className="w-[18px]" />
-      )}
-      <StatusCheckbox
-        status={status}
-        onPress={onToggle}
-      />
+      <View
+        className="justify-center"
+        style={{ height: 24 }}>
+        <StatusCheckbox
+          status={status}
+          onPress={onToggle}
+        />
+      </View>
       <View className="flex-1 gap-1">
         <View className="flex-row gap-2 items-center">
           <View className="flex-1">
@@ -107,10 +86,28 @@ export function TodoItem({
               done={todo.done}
             />
           </View>
-          {collapsed && childCount > 0 ? (
-            <View className="py-0.5 px-2 rounded-full bg-neutral-800">
+          {hasChildren && childCount > 0 ? (
+            <Pressable
+              hitSlop={8}
+              onPress={onToggleCollapse}
+              accessibilityRole="button"
+              accessibilityLabel={collapsed ? "Expand subtasks" : "Collapse subtasks"}
+              className="flex-row gap-1 items-center py-0.5 px-2 rounded-full bg-neutral-800 active:opacity-60">
               <Text className="text-xs text-neutral-400">{childCount}</Text>
-            </View>
+              {collapsed ? (
+                <ChevronRight
+                  size={13}
+                  color="#a3a3a3"
+                  strokeWidth={2.5}
+                />
+              ) : (
+                <ChevronDown
+                  size={13}
+                  color="#a3a3a3"
+                  strokeWidth={2.5}
+                />
+              )}
+            </Pressable>
           ) : null}
         </View>
         {hasMeta ? (
