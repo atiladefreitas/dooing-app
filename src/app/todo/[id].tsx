@@ -1,16 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
 import { ReactNode, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { getStatus } from '@/lib/todo';
 import { useTodos } from '@/store/todos';
@@ -53,7 +44,6 @@ export default function TodoDetailScreen() {
   const remove = useTodos((s) => s.remove);
   const addNested = useTodos((s) => s.addNested);
   const toggle = useTodos((s) => s.toggleStatus);
-  const headerHeight = useHeaderHeight();
   const [sub, setSub] = useState('');
 
   if (!todo) {
@@ -96,15 +86,12 @@ export default function TodoDetailScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-neutral-950"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={headerHeight}>
-      <ScrollView
-        className="flex-1 bg-neutral-950"
-        contentContainerStyle={{ padding: 16, gap: 20 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive">
+    <KeyboardAwareScrollView
+      style={{ flex: 1, backgroundColor: '#0a0a0a' }}
+      contentContainerStyle={{ padding: 16, gap: 20 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={16}>
       <Field label="Status">
         <Pressable
           onPress={() => toggle(todo.id)}
@@ -213,7 +200,6 @@ export default function TodoDetailScreen() {
         className="mt-4 items-center rounded-lg border border-red-500/40 py-3 active:opacity-70">
         <Text className="font-semibold text-red-400">Delete todo</Text>
       </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

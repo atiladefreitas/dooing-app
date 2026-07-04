@@ -2,7 +2,6 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetModal,
-  BottomSheetScrollView,
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import {
@@ -16,6 +15,8 @@ import {
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTodos } from '@/store/todos';
+
+import { BottomSheetKeyboardAwareScrollView } from './bottom-sheet-keyboard-aware-scroll-view';
 
 const PRIORITIES = ['important', 'urgent'] as const;
 
@@ -119,16 +120,14 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
     <BottomSheetModal
       ref={sheetRef}
       enableDynamicSizing
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.background}
       handleIndicatorStyle={styles.handle}
       onDismiss={reset}>
-      <BottomSheetScrollView
+      <BottomSheetKeyboardAwareScrollView
         contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled">
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={16}>
         <Text className="text-lg font-semibold text-white">
           {parent ? 'New subtask' : 'New task'}
         </Text>
@@ -219,7 +218,7 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
             {parent ? 'Add subtask' : 'Add task'}
           </Text>
         </Pressable>
-      </BottomSheetScrollView>
+      </BottomSheetKeyboardAwareScrollView>
     </BottomSheetModal>
   );
 });
