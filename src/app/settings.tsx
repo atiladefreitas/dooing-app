@@ -3,6 +3,8 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
 import { ImportError, importFromHost } from "@/lib/api";
+import { loadDemoData } from "@/lib/seed";
+import { useBlocks } from "@/store/blocks";
 import { useTodos } from "@/store/todos";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -18,21 +20,54 @@ export default function SettingsScreen() {
   const count = useTodos((s) => s.todos.length);
   const lastSync = useTodos((s) => s.lastSync);
   const reset = useTodos((s) => s.reset);
+  const blockCount = useBlocks((s) => s.blocks.length);
+  const resetBlocks = useBlocks((s) => s.reset);
   const [syncing, setSyncing] = useState(false);
 
   const confirmReset = () => {
-    Alert.alert("Clear all todos?", "This removes every local todo. Cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: reset },
-    ]);
+    Alert.alert(
+      "Clear all data?",
+      "This removes every local todo and time block. Cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            reset();
+            resetBlocks();
+          },
+        },
+      ],
+    );
+  };
+
+  const loadDemo = () => {
+    Alert.alert(
+      "Load test data?",
+      "Adds a sample set of todos and time blocks covering every field, status, priority, recurrence type and overlap case. Existing data is kept.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Load",
+          onPress: () => {
+            const { todos, blocks } = loadDemoData();
+            Alert.alert("Test data loaded", `${todos} todos and ${blocks} time blocks added.`);
+          },
+        },
+      ],
+    );
   };
 
   const resync = async () => {
     if (!lastSync) return;
     setSyncing(true);
     try {
-      const { imported, updated } = await importFromHost(lastSync.host);
-      Alert.alert("Synced", `${imported} new, ${updated} updated.`);
+      const summary = await importFromHost(lastSync.host);
+      const blocks = summary.blocksAvailable
+        ? `\n${summary.blocksImported} new, ${summary.blocksUpdated} updated time blocks.`
+        : "\nNo /blocks endpoint on this host.";
+      Alert.alert("Synced", `${summary.imported} new, ${summary.updated} updated todos.${blocks}`);
     } catch (err) {
       const message = err instanceof ImportError ? err.message : "Something went wrong syncing.";
       Alert.alert("Sync failed", message);
@@ -46,6 +81,10 @@ export default function SettingsScreen() {
       <Row
         label="Todos"
         value={`${count} stored locally`}
+      />
+      <Row
+        label="Time blocks"
+        value={`${blockCount} stored locally`}
       />
       <Row
         label="Last sync"
@@ -67,6 +106,12 @@ export default function SettingsScreen() {
           <Text className="font-semibold text-neutral-200">{syncing ? "Syncing…" : "Sync now from last host"}</Text>
         </Pressable>
       ) : null}
+
+      <Pressable
+        onPress={loadDemo}
+        className="items-center py-3 rounded-lg border active:opacity-70 border-neutral-700">
+        <Text className="font-semibold text-neutral-200">Load test data</Text>
+      </Pressable>
 
       <Pressable
         onPress={confirmReset}

@@ -5,7 +5,7 @@ import {
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
-import { Pencil, Plus, Trash2 } from 'lucide-react-native';
+import { CalendarClock, Pencil, Plus, Trash2 } from 'lucide-react-native';
 import {
   forwardRef,
   ReactNode,
@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 
 import { useTodos } from '@/store/todos';
 
@@ -97,6 +97,14 @@ export const TodoActionsSheet = forwardRef<TodoActionsSheetRef, Props>(function 
     dismissThen(() => onAddSubtask(t));
   };
 
+  const handleSchedule = () => {
+    if (!target) return;
+    const id = target.id;
+    dismissThen(() =>
+      router.push({ pathname: '/calendar', params: { scheduleTodo: id } })
+    );
+  };
+
   const handleEdit = () => {
     if (!target) return;
     const id = target.id;
@@ -146,6 +154,11 @@ export const TodoActionsSheet = forwardRef<TodoActionsSheetRef, Props>(function 
           icon={<Plus size={20} color="#e5e5e5" strokeWidth={2} />}
           label="Add subtask"
           onPress={handleAddSubtask}
+        />
+        <ActionRow
+          icon={<CalendarClock size={19} color="#e5e5e5" strokeWidth={2} />}
+          label="Schedule…"
+          onPress={handleSchedule}
         />
         <ActionRow
           icon={<Pencil size={18} color="#e5e5e5" strokeWidth={2} />}

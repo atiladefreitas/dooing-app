@@ -1,4 +1,4 @@
-import { router, Stack } from "expo-router";
+import { router } from "expo-router";
 import { useMemo, useRef } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,25 +6,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AddTodoSheet, AddTodoSheetRef } from "@/components/add-todo-sheet";
 import { TodoActionsSheet, TodoActionsSheetRef } from "@/components/todo-actions-sheet";
 import { TodoItem } from "@/components/todo-item";
+import { todayKey } from "@/lib/date";
+import { scheduleMap } from "@/lib/schedule";
 import { orderForDisplay } from "@/lib/todo";
+import { useBlocks } from "@/store/blocks";
 import { useTodos } from "@/store/todos";
-
-function HeaderButtons() {
-  return (
-    <View className="flex-row gap-5 items-center">
-      <Pressable
-        onPress={() => router.push("/scan")}
-        hitSlop={8}>
-        <Text className="text-base text-blue-400">Scan</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => router.push("/settings")}
-        hitSlop={8}>
-        <Text className="text-xl text-blue-400">⚙</Text>
-      </Pressable>
-    </View>
-  );
-}
 
 function EmptyState() {
   return (
@@ -42,6 +28,8 @@ export default function HomeScreen() {
   const toggle = useTodos((s) => s.toggleStatus);
   const collapsedMap = useTodos((s) => s.collapsed);
   const toggleCollapsed = useTodos((s) => s.toggleCollapsed);
+  const blocks = useBlocks((s) => s.blocks);
+  const links = useBlocks((s) => s.links);
   const sheetRef = useRef<AddTodoSheetRef>(null);
   const actionsRef = useRef<TodoActionsSheetRef>(null);
 
@@ -57,6 +45,11 @@ export default function HomeScreen() {
     return counts;
   }, [todos]);
 
+  const scheduled = useMemo(
+    () => scheduleMap(todos, blocks, links, todayKey()),
+    [blocks, links, todos],
+  );
+
   const data = useMemo(() => orderForDisplay(todos, collapsedSet), [todos, collapsedSet]);
   const remaining = todos.filter((t) => !t.done).length;
 
@@ -64,8 +57,6 @@ export default function HomeScreen() {
     <SafeAreaView
       edges={["bottom"]}
       className="flex-1 bg-neutral-950">
-      <Stack.Screen options={{ headerRight: HeaderButtons }} />
-
       <FlatList
         data={data}
         keyExtractor={(t) => t.id}
@@ -78,6 +69,13 @@ export default function HomeScreen() {
             childCount={childCount[item.id] ?? 0}
             collapsed={collapsedSet.has(item.id)}
             onToggleCollapse={() => toggleCollapsed(item.id)}
+            scheduled={scheduled[item.id]}
+            onPressScheduled={() =>
+              router.push({
+                pathname: "/calendar",
+                params: { date: scheduled[item.id]?.date },
+              })
+            }
           />
         )}
         ListHeaderComponent={

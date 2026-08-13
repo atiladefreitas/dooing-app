@@ -6,9 +6,13 @@ import { TodoStatus } from "@/types/todo";
 interface Props {
   status: TodoStatus;
   onPress: () => void;
+  size?: number;
 }
 
-export function StatusCheckbox({ status, onPress }: Props) {
+export function StatusCheckbox({ status, onPress, size = 20 }: Props) {
+  const box = { width: size, height: size, borderRadius: size / 2 };
+  const border = Math.max(2, Math.round(size * 0.125));
+
   return (
     <Pressable
       hitSlop={12}
@@ -17,19 +21,29 @@ export function StatusCheckbox({ status, onPress }: Props) {
       accessibilityState={{ checked: status === "done" }}
       className="active:opacity-60">
       {status === "done" ? (
-        <View className="justify-center items-center w-5 h-5 bg-green-500 rounded-full">
+        <View
+          style={box}
+          className="justify-center items-center bg-green-500">
           <Check
-            size={12}
+            size={Math.round(size * 0.6)}
             color="#0a0a0a"
             strokeWidth={3.5}
           />
         </View>
       ) : status === "in_progress" ? (
-        <View className="justify-center items-center w-5 h-5 rounded-full border-[2.5px] border-priority-urgent">
-          <View className="w-2.5 h-2.5 rounded-full bg-priority-urgent" />
+        <View
+          style={[box, { borderWidth: border }]}
+          className="justify-center items-center border-priority-urgent">
+          <View
+            style={{ width: size * 0.5, height: size * 0.5, borderRadius: size }}
+            className="bg-priority-urgent"
+          />
         </View>
       ) : (
-        <View className="w-5 h-5 rounded-full border-[2.5px] border-neutral-600" />
+        <View
+          style={[box, { borderWidth: border }]}
+          className="border-neutral-600"
+        />
       )}
     </Pressable>
   );

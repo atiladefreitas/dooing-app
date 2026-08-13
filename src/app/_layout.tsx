@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
+import { useBlocks } from '@/store/blocks';
 import { useTodos } from '@/store/todos';
 
 SplashScreen.preventAutoHideAsync();
@@ -16,10 +17,11 @@ const BG = '#0a0a0a';
 
 export default function RootLayout() {
   const hydrated = useTodos((s) => s.hydrated);
+  const blocksHydrated = useBlocks((s) => s.hydrated);
 
   useEffect(() => {
-    if (hydrated) SplashScreen.hideAsync();
-  }, [hydrated]);
+    if (hydrated && blocksHydrated) SplashScreen.hideAsync();
+  }, [blocksHydrated, hydrated]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -33,7 +35,7 @@ export default function RootLayout() {
               headerShadowVisible: false,
               contentStyle: { backgroundColor: BG },
             }}>
-            <Stack.Screen name="index" options={{ title: 'Dooing' }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="todo/[id]" options={{ title: 'Edit todo' }} />
             <Stack.Screen
               name="scan"

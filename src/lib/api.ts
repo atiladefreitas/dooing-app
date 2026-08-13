@@ -1,6 +1,7 @@
+import { useBlocks } from '@/store/blocks';
 import { useTodos } from '@/store/todos';
 
-import { todosUrl } from './qr';
+import { blocksUrl, todosUrl } from './qr';
 
 /** Abort the request if the server is slow/unreachable (LAN, so keep it short). */
 const TIMEOUT_MS = 8000;
@@ -47,12 +48,54 @@ export async function fetchTodos(url: string): Promise<unknown[]> {
 }
 
 /**
- * Fetch from a host origin and merge into the store. Returns the import
- * summary. Reused by the scanner and Settings re-sync.
+ * Fetch the blocks array. Returns null when the plugin doesn't serve /blocks
+ * (older server.lua, or bloocky.nvim not installed) so todo import still works.
  */
-export async function importFromHost(
-  host: string
-): Promise<{ imported: number; updated: number }> {
-  const raw = await fetchTodos(todosUrl(host));
-  return useTodos.getState().mergeServerTodos(raw, host);
+export async function fetchBlocks(url: string): Promise<unknown[] | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface ImportSummary {
+  imported: number;
+  updated: number;
+  blocksImported: number;
+  blocksUpdated: number;
+  blocksAvailable: boolean;
+}
+
+/**
+ * Fetch from a host origin and merge into the stores. Todos are required;
+ * blocks are best-effort. Reused by the scanner and Settings re-sync.
+ */
+export async function importFromHost(host: string): Promise<ImportSummary> {
+  const rawTodos = await fetchTodos(todosUrl(host));
+  const { imported, updated } = useTodos.getState().mergeServerTodos(rawTodos, host);
+
+  const rawBlocks = await fetchBlocks(blocksUrl(host));
+  if (!rawBlocks) {
+    return { imported, updated, blocksImported: 0, blocksUpdated: 0, blocksAvailable: false };
+  }
+
+  const blocks = useBlocks.getState().mergeServerBlocks(rawBlocks);
+  return {
+    imported,
+    updated,
+    blocksImported: blocks.imported,
+    blocksUpdated: blocks.updated,
+    blocksAvailable: true,
+  };
 }

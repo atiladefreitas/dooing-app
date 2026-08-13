@@ -29,3 +29,8 @@ export function parseShareUrl(raw: string): ParsedShare | null {
 export function todosUrl(host: string): string {
   return `${host.replace(/\/+$/, '')}/todos`;
 }
+
+/** Build the time-blocks endpoint (bloocky.nvim's file, served by server.lua). */
+export function blocksUrl(host: string): string {
+  return `${host.replace(/\/+$/, '')}/blocks`;
+}

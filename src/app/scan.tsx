@@ -21,10 +21,13 @@ export default function ScanScreen() {
     locked.current = true;
     setBusy(true);
     try {
-      const { imported, updated } = await importFromHost(share.host);
+      const summary = await importFromHost(share.host);
+      const blocks = summary.blocksAvailable
+        ? `\n${summary.blocksImported} new, ${summary.blocksUpdated} updated time blocks.`
+        : "";
       Alert.alert(
         "Imported",
-        `${imported} new, ${updated} updated from ${share.host}.`,
+        `${summary.imported} new, ${summary.updated} updated todos from ${share.host}.${blocks}`,
         [{ text: "Done", onPress: () => router.back() }],
       );
     } catch (err) {

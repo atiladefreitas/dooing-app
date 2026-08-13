@@ -1,0 +1,625 @@
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { LayoutChangeEvent, ScrollView, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+
+import {
+  GRANULARITY,
+  MIN_DURATION,
+  PositionedBlock,
+  layoutOverlaps,
+  paletteForBlock,
+  stripTags,
+} from '@/lib/block';
+import { formatMinutes, minutesNow, todayKey } from '@/lib/date';
+import { getStatus } from '@/lib/todo';
+import { Block } from '@/types/block';
+import { Todo } from '@/types/todo';
+
+import { StatusCheckbox } from '../status-checkbox';
+
+export const HOUR_HEIGHT = 62;
+export const GUTTER_W = 52;
+const DAY_HEIGHT = HOUR_HEIGHT * 24;
+const LONG_PRESS_MS = 220;
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+export interface GridHit {
+  date: string;
+  start_min: number;
+}
+
+export interface TimeGridHandle {
+  hitTest: (pageX: number, pageY: number) => GridHit | null;
+  scrollToMinute: (minute: number, animated?: boolean) => void;
+}
+
+interface TimeGridProps {
+  days: string[];
+  blocksByDay: Record<string, Block[]>;
+  todoForBlock: (blockId: string) => Todo | undefined;
+  onCreate: (date: string, startMin: number, durationMin: number) => void;
+  onOpenBlock: (block: Block, date: string) => void;
+  onMoveBlock: (block: Block, date: string, startMin: number) => void;
+  onResizeBlock: (block: Block, durationMin: number) => void;
+  onToggleTodo: (todoId: string) => void;
+  compact?: boolean;
+}
+
+function HourLines() {
+  return (
+    <>
+      {HOURS.map((h) => (
+        <View
+          key={h}
+          pointerEvents="none"
+          style={{ top: h * HOUR_HEIGHT }}
+          className="absolute right-0 left-0 h-px bg-neutral-800"
+        />
+      ))}
+      {HOURS.map((h) => (
+        <View
+          key={`half-${h}`}
+          pointerEvents="none"
+          style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+          className="absolute right-0 left-0 h-px bg-neutral-900"
+        />
+      ))}
+    </>
+  );
+}
+
+function Gutter() {
+  return (
+    <View style={{ width: GUTTER_W, height: DAY_HEIGHT }}>
+      {HOURS.map((h) => (
+        <Text
+          key={h}
+          style={{ top: h * HOUR_HEIGHT - 7 }}
+          className="absolute right-2 text-[11px] tabular-nums text-neutral-600">
+          {h === 0 ? '' : formatMinutes(h * 60)}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+interface GridBlockProps {
+  item: PositionedBlock;
+  date: string;
+  dayIndex: number;
+  dayCount: number;
+  colWidth: number;
+  todo?: Todo;
+  compact: boolean;
+  onOpen: (block: Block, date: string) => void;
+  onMove: (block: Block, dayIndex: number, startMin: number) => void;
+  onResize: (block: Block, durationMin: number) => void;
+  onToggleTodo: (todoId: string) => void;
+  setScrollEnabled: (enabled: boolean) => void;
+  setHint: (hint: string | null) => void;
+}
+
+function GridBlock({
+  item,
+  date,
+  dayIndex,
+  dayCount,
+  colWidth,
+  todo,
+  compact,
+  onOpen,
+  onMove,
+  onResize,
+  onToggleTodo,
+  setScrollEnabled,
+  setHint,
+}: GridBlockProps) {
+  const { block, column, columns } = item;
+  const palette = paletteForBlock(block);
+
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const extraHeight = useSharedValue(0);
+  const active = useSharedValue(0);
+  const lastStep = useSharedValue(0);
+
+  const slotWidth = (colWidth - 4) / columns;
+  const left = dayIndex * colWidth + 2 + column * slotWidth;
+  const top = (block.start_min / 60) * HOUR_HEIGHT;
+  const height = Math.max((block.duration_min / 60) * HOUR_HEIGHT, 22);
+
+  const showHint = useCallback(
+    (startMin: number, durationMin: number) => {
+      setHint(`${formatMinutes(startMin)} – ${formatMinutes(startMin + durationMin)}`);
+    },
+    [setHint]
+  );
+
+  const commitMove = useCallback(
+    (dayDelta: number, startMin: number) => {
+      setHint(null);
+      const target = Math.max(0, Math.min(dayCount - 1, dayIndex + dayDelta));
+      onMove(block, target, startMin);
+    },
+    [block, dayCount, dayIndex, onMove, setHint]
+  );
+
+  const commitResize = useCallback(
+    (durationMin: number) => {
+      setHint(null);
+      onResize(block, durationMin);
+    },
+    [block, onResize, setHint]
+  );
+
+  const movePan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(LONG_PRESS_MS)
+        .onStart(() => {
+          active.set(1);
+          lastStep.set(0);
+          runOnJS(setScrollEnabled)(false);
+          runOnJS(showHint)(block.start_min, block.duration_min);
+        })
+        .onUpdate((e) => {
+          translateX.set(e.translationX);
+          translateY.set(e.translationY);
+          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
+          if (step !== lastStep.get()) {
+            lastStep.set(step);
+            const next = Math.max(
+              0,
+              Math.min(1440 - block.duration_min, block.start_min + step * GRANULARITY)
+            );
+            runOnJS(showHint)(next, block.duration_min);
+          }
+        })
+        .onEnd((e) => {
+          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
+          const startMin = Math.max(
+            0,
+            Math.min(1440 - block.duration_min, block.start_min + step * GRANULARITY)
+          );
+          const dayDelta = dayCount > 1 ? Math.round(e.translationX / colWidth) : 0;
+          runOnJS(commitMove)(dayDelta, startMin);
+        })
+        .onFinalize(() => {
+          translateX.set(0);
+          translateY.set(0);
+          active.set(0);
+          runOnJS(setScrollEnabled)(true);
+          runOnJS(setHint)(null);
+        }),
+    [
+      active,
+      block.duration_min,
+      block.start_min,
+      colWidth,
+      commitMove,
+      dayCount,
+      lastStep,
+      setHint,
+      setScrollEnabled,
+      showHint,
+      translateX,
+      translateY,
+    ]
+  );
+
+  const resizePan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(2)
+        .onBegin(() => {
+          runOnJS(setScrollEnabled)(false);
+        })
+        .onStart(() => {
+          active.set(1);
+          lastStep.set(0);
+          runOnJS(showHint)(block.start_min, block.duration_min);
+        })
+        .onUpdate((e) => {
+          extraHeight.set(e.translationY);
+          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
+          if (step !== lastStep.get()) {
+            lastStep.set(step);
+            const next = Math.max(
+              MIN_DURATION,
+              Math.min(1440 - block.start_min, block.duration_min + step * GRANULARITY)
+            );
+            runOnJS(showHint)(block.start_min, next);
+          }
+        })
+        .onEnd((e) => {
+          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
+          const duration = Math.max(
+            MIN_DURATION,
+            Math.min(1440 - block.start_min, block.duration_min + step * GRANULARITY)
+          );
+          runOnJS(commitResize)(duration);
+        })
+        .onFinalize(() => {
+          extraHeight.set(0);
+          active.set(0);
+          runOnJS(setScrollEnabled)(true);
+          runOnJS(setHint)(null);
+        }),
+    [
+      active,
+      block.duration_min,
+      block.start_min,
+      commitResize,
+      extraHeight,
+      lastStep,
+      setHint,
+      setScrollEnabled,
+      showHint,
+    ]
+  );
+
+  const tap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(LONG_PRESS_MS + 60)
+        .onEnd(() => {
+          runOnJS(onOpen)(block, date);
+        }),
+    [block, date, onOpen]
+  );
+
+  const composed = useMemo(() => Gesture.Race(movePan, tap), [movePan, tap]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.get() }, { translateY: translateY.get() }],
+    height: Math.max(height + extraHeight.get(), 22),
+    borderColor: active.get() ? palette.bar : palette.border,
+    zIndex: active.get() ? 50 : 1,
+    elevation: active.get() ? 12 : 0,
+  }));
+
+  const status = todo ? getStatus(todo) : null;
+  const label = stripTags(block.title) || block.title;
+  const tall = height >= 46;
+
+  return (
+    <GestureDetector gesture={composed}>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            top,
+            left,
+            width: slotWidth - 2,
+            backgroundColor: palette.fill,
+          },
+          animatedStyle,
+        ]}
+        className="overflow-hidden rounded-md border">
+        <View
+          style={{ backgroundColor: palette.bar }}
+          className="absolute top-0 bottom-0 left-0 w-1"
+        />
+        <View className="flex-row flex-1 gap-1 items-start px-1.5 py-1 pl-2.5">
+          {todo ? (
+            <View className="pt-px">
+              <StatusCheckbox
+                status={status ?? 'pending'}
+                size={14}
+                onPress={() => onToggleTodo(todo.id)}
+              />
+            </View>
+          ) : null}
+          <View className="flex-1">
+            <Text
+              numberOfLines={tall ? 2 : 1}
+              style={{ color: todo?.done ? palette.muted : palette.text }}
+              className={`text-[11px] font-medium leading-[14px] ${
+                todo?.done ? 'line-through' : ''
+              }`}>
+              {label}
+            </Text>
+            {tall && !compact ? (
+              <Text
+                style={{ color: palette.dim }}
+                className="text-[10px] tabular-nums leading-[13px]">
+                {formatMinutes(block.start_min)}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+        <GestureDetector gesture={resizePan}>
+          <View className="absolute right-0 bottom-0 left-0 justify-end items-center h-4">
+            <View
+              style={{ backgroundColor: palette.bar }}
+              className="mb-0.5 h-0.5 w-6 rounded-full"
+            />
+          </View>
+        </GestureDetector>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+function NowIndicator({ dayIndex, colWidth }: { dayIndex: number; colWidth: number }) {
+  const [minute, setMinute] = useState(minutesNow);
+
+  useEffect(() => {
+    const id = setInterval(() => setMinute(minutesNow()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        top: (minute / 60) * HOUR_HEIGHT,
+        left: dayIndex * colWidth,
+        width: colWidth,
+      }}
+      className="absolute h-px bg-red-500">
+      <View className="absolute -top-1 -left-0.5 h-2 w-2 rounded-full bg-red-500" />
+    </View>
+  );
+}
+
+export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeGrid(
+  {
+    days,
+    blocksByDay,
+    todoForBlock,
+    onCreate,
+    onOpenBlock,
+    onMoveBlock,
+    onResizeBlock,
+    onToggleTodo,
+    compact = false,
+  },
+  ref
+) {
+  const scrollRef = useRef<ScrollView>(null);
+  const viewportRef = useRef<View>(null);
+  const scrollY = useRef(0);
+  const viewport = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
+  const [bodyWidth, setBodyWidth] = useState(0);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [hint, setHint] = useState<string | null>(null);
+
+  const colWidth = bodyWidth ? bodyWidth / days.length : 0;
+  const today = todayKey();
+  const todayIndex = days.indexOf(today);
+
+  const draftActive = useSharedValue(0);
+  const draftCol = useSharedValue(0);
+  const draftStart = useSharedValue(0);
+  const draftEnd = useSharedValue(0);
+
+  const measure = useCallback(() => {
+    viewportRef.current?.measureInWindow((x, y, width, height) => {
+      viewport.current = { x, y, width, height };
+    });
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hitTest: (pageX, pageY) => {
+        const { x, y, width, height } = viewport.current;
+        if (!width || !height || !colWidth) return null;
+        if (pageX < x || pageX > x + width || pageY < y || pageY > y + height) return null;
+
+        const localY = pageY - y + scrollY.current;
+        const raw = (localY / HOUR_HEIGHT) * 60;
+        const start = Math.max(
+          0,
+          Math.min(1440 - MIN_DURATION, Math.round(raw / GRANULARITY) * GRANULARITY)
+        );
+
+        const localX = pageX - x - GUTTER_W;
+        const index = Math.max(0, Math.min(days.length - 1, Math.floor(localX / colWidth)));
+        return { date: days[index], start_min: start };
+      },
+      scrollToMinute: (minute, animated = false) => {
+        const offset = Math.max(0, (minute / 60) * HOUR_HEIGHT - HOUR_HEIGHT * 1.5);
+        scrollRef.current?.scrollTo({ y: offset, animated });
+      },
+    }),
+    [colWidth, days]
+  );
+
+  const commitCreate = useCallback(
+    (col: number, start: number, duration: number) => {
+      const date = days[Math.max(0, Math.min(days.length - 1, col))];
+      if (date) onCreate(date, start, duration);
+    },
+    [days, onCreate]
+  );
+
+  const showRangeHint = useCallback(
+    (start: number, end: number) => {
+      setHint(`${formatMinutes(start)} – ${formatMinutes(end)}`);
+    },
+    []
+  );
+
+  const dayCount = days.length;
+
+  const createPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(LONG_PRESS_MS)
+        .onStart((e) => {
+          const col = colWidth
+            ? Math.max(0, Math.min(dayCount - 1, Math.floor(e.x / colWidth)))
+            : 0;
+          const raw = (e.y / HOUR_HEIGHT) * 60;
+          const start = Math.max(
+            0,
+            Math.min(
+              1440 - MIN_DURATION,
+              Math.round(raw / GRANULARITY) * GRANULARITY
+            )
+          );
+          draftCol.set(col);
+          draftStart.set(start);
+          draftEnd.set(start + MIN_DURATION);
+          draftActive.set(1);
+          runOnJS(setScrollEnabled)(false);
+          runOnJS(showRangeHint)(start, start + MIN_DURATION);
+        })
+        .onUpdate((e) => {
+          const raw = (e.y / HOUR_HEIGHT) * 60;
+          const snapped = Math.max(
+            MIN_DURATION,
+            Math.min(1440, Math.round(raw / GRANULARITY) * GRANULARITY)
+          );
+          const next = Math.max(draftStart.get() + MIN_DURATION, snapped);
+          if (next !== draftEnd.get()) {
+            draftEnd.set(next);
+            runOnJS(showRangeHint)(draftStart.get(), next);
+          }
+        })
+        .onEnd(() => {
+          runOnJS(commitCreate)(
+            draftCol.get(),
+            draftStart.get(),
+            draftEnd.get() - draftStart.get()
+          );
+        })
+        .onFinalize(() => {
+          draftActive.set(0);
+          runOnJS(setScrollEnabled)(true);
+          runOnJS(setHint)(null);
+        }),
+    [
+      colWidth,
+      commitCreate,
+      dayCount,
+      draftActive,
+      draftCol,
+      draftEnd,
+      draftStart,
+      showRangeHint,
+    ]
+  );
+
+  const draftStyle = useAnimatedStyle(() => ({
+    opacity: draftActive.get(),
+    top: (draftStart.get() / 60) * HOUR_HEIGHT,
+    height: Math.max(((draftEnd.get() - draftStart.get()) / 60) * HOUR_HEIGHT, 8),
+    left: draftCol.get() * colWidth + 2,
+    width: Math.max(colWidth - 6, 0),
+  }));
+
+  const positioned = useMemo(() => {
+    const out: { date: string; index: number; items: PositionedBlock[] }[] = [];
+    days.forEach((date, index) => {
+      out.push({ date, index, items: layoutOverlaps(blocksByDay[date] ?? []) });
+    });
+    return out;
+  }, [blocksByDay, days]);
+
+  const handleMove = useCallback(
+    (block: Block, dayIndex: number, startMin: number) => {
+      onMoveBlock(block, days[dayIndex] ?? block.date, startMin);
+    },
+    [days, onMoveBlock]
+  );
+
+  return (
+    <View className="flex-1">
+      <View
+        ref={viewportRef}
+        collapsable={false}
+        onLayout={measure}
+        className="flex-1">
+        <ScrollView
+          ref={scrollRef}
+          scrollEnabled={scrollEnabled}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            scrollY.current = e.nativeEvent.contentOffset.y;
+          }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 24 }}>
+          <View style={{ height: DAY_HEIGHT }} className="flex-row">
+            <Gutter />
+            <View
+              className="flex-1"
+              onLayout={(e: LayoutChangeEvent) => setBodyWidth(e.nativeEvent.layout.width)}>
+              <HourLines />
+              {days.map((date, i) =>
+                i === 0 ? null : (
+                  <View
+                    key={`sep-${date}`}
+                    pointerEvents="none"
+                    style={{ left: i * colWidth }}
+                    className="absolute top-0 bottom-0 w-px bg-neutral-800"
+                  />
+                )
+              )}
+
+              <GestureDetector gesture={createPan}>
+                <View className="absolute inset-0" />
+              </GestureDetector>
+
+              <Animated.View
+                pointerEvents="none"
+                style={[draftStyle, { backgroundColor: '#16304d' }]}
+                className="absolute rounded-md border border-dashed border-blue-400"
+              />
+
+              {positioned.map(({ date, index, items }) =>
+                items.map((item) => (
+                  <GridBlock
+                    key={`${date}-${item.block.id}`}
+                    item={item}
+                    date={date}
+                    dayIndex={index}
+                    dayCount={dayCount}
+                    colWidth={colWidth}
+                    todo={todoForBlock(item.block.id)}
+                    compact={compact}
+                    onOpen={onOpenBlock}
+                    onMove={handleMove}
+                    onResize={onResizeBlock}
+                    onToggleTodo={onToggleTodo}
+                    setScrollEnabled={setScrollEnabled}
+                    setHint={setHint}
+                  />
+                ))
+              )}
+
+              {todayIndex >= 0 && colWidth ? (
+                <NowIndicator dayIndex={todayIndex} colWidth={colWidth} />
+              ) : null}
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+
+      {hint ? (
+        <View
+          pointerEvents="none"
+          className="absolute top-3 self-center rounded-full bg-neutral-100 px-3 py-1.5 shadow-lg">
+          <Text className="text-xs font-semibold tabular-nums text-neutral-900">{hint}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+});
