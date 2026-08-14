@@ -17,6 +17,8 @@ import {
   longDateLabel,
   todayKey,
 } from '@/lib/date';
+import { useThemeColors } from '@/constants/theme';
+import { useSheetTheme } from './sheet-theme';
 import { useBlocks } from '@/store/blocks';
 import { Block, Recurrence, RecurrenceType } from '@/types/block';
 
@@ -53,7 +55,7 @@ interface Props {
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <Text className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <Text className="mt-1 text-xs font-semibold uppercase tracking-wide text-fg-muted">
       {children}
     </Text>
   );
@@ -70,23 +72,24 @@ function Stepper({
   onUp: () => void;
   sub?: string;
 }) {
+  const c = useThemeColors();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-neutral-950 p-1">
+    <View className="flex-row items-center gap-1 rounded-xl bg-canvas p-1">
       <Pressable
         onPress={onDown}
         hitSlop={6}
-        className="h-9 w-9 items-center justify-center rounded-lg active:bg-neutral-800">
-        <ChevronLeft size={18} color="#a3a3a3" />
+        className="h-9 w-9 items-center justify-center rounded-lg active:bg-elevated">
+        <ChevronLeft size={18} color={c.fgMuted} />
       </Pressable>
       <View className="min-w-[92px] items-center">
-        <Text className="text-base font-semibold tabular-nums text-white">{value}</Text>
-        {sub ? <Text className="text-[10px] text-neutral-500">{sub}</Text> : null}
+        <Text className="text-base font-semibold tabular-nums text-fg">{value}</Text>
+        {sub ? <Text className="text-[10px] text-fg-muted">{sub}</Text> : null}
       </View>
       <Pressable
         onPress={onUp}
         hitSlop={6}
-        className="h-9 w-9 items-center justify-center rounded-lg active:bg-neutral-800">
-        <ChevronRight size={18} color="#a3a3a3" />
+        className="h-9 w-9 items-center justify-center rounded-lg active:bg-elevated">
+        <ChevronRight size={18} color={c.fgMuted} />
       </Pressable>
     </View>
   );
@@ -104,9 +107,9 @@ function Chip({
   return (
     <Pressable
       onPress={onPress}
-      className={`rounded-full px-3.5 py-2 ${active ? 'bg-blue-500' : 'bg-neutral-800'}`}>
+      className={`rounded-full px-3.5 py-2 ${active ? 'bg-accent' : 'bg-elevated'}`}>
       <Text
-        className={`text-[13px] ${active ? 'font-semibold text-white' : 'text-neutral-300'}`}>
+        className={`text-[13px] ${active ? 'font-semibold text-canvas' : 'text-fg'}`}>
         {label}
       </Text>
     </Pressable>
@@ -117,6 +120,8 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
   { onSaved },
   ref
 ) {
+  const c = useThemeColors();
+  const sheet = useSheetTheme();
   const sheetRef = useRef<BottomSheetModal>(null);
   const addBlock = useBlocks((s) => s.add);
   const updateBlock = useBlocks((s) => s.update);
@@ -228,27 +233,27 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
       ref={sheetRef}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.background}
-      handleIndicatorStyle={styles.handle}>
+      backgroundStyle={sheet.background}
+      handleIndicatorStyle={sheet.handle}>
       <BottomSheetKeyboardAwareScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         bottomOffset={16}>
         <View className="flex-row items-center justify-between">
-          <Text className="text-lg font-semibold text-white">
+          <Text className="text-lg font-semibold text-fg">
             {editing ? 'Edit block' : 'New block'}
           </Text>
           {editing ? (
             <Pressable onPress={confirmDelete} hitSlop={8} className="active:opacity-60">
-              <Trash2 size={18} color="#f87171" strokeWidth={2} />
+              <Trash2 size={18} color={c.danger} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
 
         {todoId ? (
           <View className="flex-row items-center gap-1.5">
-            <Link2 size={13} color="#60a5fa" />
-            <Text className="text-xs text-blue-400">Linked to a to-do</Text>
+            <Link2 size={13} color={c.accent} />
+            <Text className="text-xs text-accent">Linked to a to-do</Text>
           </View>
         ) : null}
 
@@ -256,7 +261,7 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           value={title}
           onChangeText={setTitle}
           placeholder="What are you working on?  (use #tags)"
-          placeholderTextColor="#737373"
+          placeholderTextColor={sheet.placeholder}
           style={styles.titleInput}
           returnKeyType="done"
         />
@@ -271,8 +276,8 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           {date !== todayKey() ? (
             <Pressable
               onPress={() => setDate(todayKey())}
-              className="rounded-full bg-neutral-800 px-3 py-2 active:opacity-70">
-              <Text className="text-[13px] text-neutral-300">Today</Text>
+              className="rounded-full bg-elevated px-3 py-2 active:opacity-70">
+              <Text className="text-[13px] text-fg">Today</Text>
             </Pressable>
           ) : null}
         </View>
@@ -315,10 +320,10 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
                   key={day}
                   onPress={() => toggleDay(day)}
                   className={`h-10 flex-1 items-center justify-center rounded-full ${
-                    on ? 'bg-blue-500' : 'bg-neutral-800'
+                    on ? 'bg-accent' : 'bg-elevated'
                   }`}>
                   <Text
-                    className={`text-[13px] ${on ? 'font-bold text-white' : 'text-neutral-400'}`}>
+                    className={`text-[13px] ${on ? 'font-bold text-canvas' : 'text-fg-dim'}`}>
                     {label}
                   </Text>
                 </Pressable>
@@ -344,10 +349,10 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
               value={until}
               onChangeText={setUntil}
               placeholder="YYYY-MM-DD  (empty = forever)"
-              placeholderTextColor="#737373"
+              placeholderTextColor={sheet.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
-              style={[styles.input, !untilValid && styles.inputInvalid]}
+              style={[styles.input, !untilValid && sheet.invalid]}
             />
           </>
         ) : null}
@@ -358,7 +363,7 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           onChangeText={setNotes}
           multiline
           placeholder="Optional notes…"
-          placeholderTextColor="#737373"
+          placeholderTextColor={sheet.placeholder}
           style={styles.notesInput}
         />
 
@@ -366,10 +371,10 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           onPress={submit}
           disabled={!canSubmit}
           className={`mt-2 items-center rounded-xl py-3.5 ${
-            canSubmit ? 'bg-blue-500 active:opacity-80' : 'bg-neutral-800'
+            canSubmit ? 'bg-accent active:opacity-80' : 'bg-elevated'
           }`}>
           <Text
-            className={`text-base font-semibold ${canSubmit ? 'text-white' : 'text-neutral-500'}`}>
+            className={`text-base font-semibold ${canSubmit ? 'text-canvas' : 'text-fg-muted'}`}>
             {editing ? 'Save block' : 'Add block'}
           </Text>
         </Pressable>
@@ -379,29 +384,20 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
 });
 
 const styles = StyleSheet.create({
-  background: { backgroundColor: '#171717' },
-  handle: { backgroundColor: '#525252', width: 40 },
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 36, gap: 10 },
   titleInput: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
   },
   input: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
   },
-  inputInvalid: { borderWidth: 1, borderColor: '#ef4444' },
   notesInput: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,

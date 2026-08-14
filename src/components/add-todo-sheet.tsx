@@ -17,6 +17,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTodos } from '@/store/todos';
 
 import { BottomSheetKeyboardAwareScrollView } from './bottom-sheet-keyboard-aware-scroll-view';
+import { useSheetTheme } from './sheet-theme';
 
 const PRIORITIES = ['important', 'urgent'] as const;
 
@@ -36,7 +37,7 @@ function endOfDayIn(days: number): number {
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <Text className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <Text className="mt-1 text-xs font-semibold uppercase tracking-wide text-fg-muted">
       {children}
     </Text>
   );
@@ -53,6 +54,7 @@ export type AddTodoSheetRef = {
 };
 
 export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_props, ref) {
+  const sheet = useSheetTheme();
   const sheetRef = useRef<BottomSheetModal>(null);
   const add = useTodos((s) => s.add);
   const addNested = useTodos((s) => s.addNested);
@@ -121,18 +123,18 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
       ref={sheetRef}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.background}
-      handleIndicatorStyle={styles.handle}
+      backgroundStyle={sheet.background}
+      handleIndicatorStyle={sheet.handle}
       onDismiss={reset}>
       <BottomSheetKeyboardAwareScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         bottomOffset={16}>
-        <Text className="text-lg font-semibold text-white">
+        <Text className="text-lg font-semibold text-fg">
           {parent ? 'New subtask' : 'New task'}
         </Text>
         {parent ? (
-          <Text className="text-sm text-neutral-400" numberOfLines={1}>
+          <Text className="text-sm text-fg-dim" numberOfLines={1}>
             under “{parent.text}”
           </Text>
         ) : null}
@@ -141,8 +143,8 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
           value={title}
           onChangeText={setTitle}
           placeholder={parent ? 'Subtask title…' : 'What needs doing?  (use #tags)'}
-          placeholderTextColor="#737373"
-          style={styles.titleInput}
+          placeholderTextColor={sheet.placeholder}
+          style={[styles.titleInput, sheet.input]}
           returnKeyType="done"
         />
 
@@ -155,10 +157,10 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
               <Pressable
                 key={p}
                 onPress={() => togglePriority(p)}
-                className={`rounded-full px-4 py-2 ${on ? onBg : 'bg-neutral-800'}`}>
+                className={`rounded-full px-4 py-2 ${on ? onBg : 'bg-elevated'}`}>
                 <Text
                   className={`text-sm ${
-                    on ? 'font-semibold text-neutral-950' : 'text-neutral-300'
+                    on ? 'font-semibold text-canvas' : 'text-fg'
                   }`}>
                   {p}
                 </Text>
@@ -175,9 +177,9 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
               <Pressable
                 key={o.label}
                 onPress={() => setDueDays(o.days)}
-                className={`rounded-full px-4 py-2 ${on ? 'bg-blue-500' : 'bg-neutral-800'}`}>
+                className={`rounded-full px-4 py-2 ${on ? 'bg-accent' : 'bg-elevated'}`}>
                 <Text
-                  className={`text-sm ${on ? 'font-semibold text-white' : 'text-neutral-300'}`}>
+                  className={`text-sm ${on ? 'font-semibold text-canvas' : 'text-fg'}`}>
                   {o.label}
                 </Text>
               </Pressable>
@@ -191,8 +193,8 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
           onChangeText={setEst}
           keyboardType="decimal-pad"
           placeholder="e.g. 2"
-          placeholderTextColor="#737373"
-          style={[styles.input, { width: 100 }]}
+          placeholderTextColor={sheet.placeholder}
+          style={[styles.input, sheet.input, { width: 100 }]}
         />
 
         <FieldLabel>Notes</FieldLabel>
@@ -201,19 +203,19 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
           onChangeText={setNotes}
           multiline
           placeholder="Optional notes…"
-          placeholderTextColor="#737373"
-          style={styles.notesInput}
+          placeholderTextColor={sheet.placeholder}
+          style={[styles.notesInput, sheet.input]}
         />
 
         <Pressable
           onPress={submit}
           disabled={!canSubmit}
           className={`mt-2 items-center rounded-xl py-3.5 ${
-            canSubmit ? 'bg-blue-500 active:opacity-80' : 'bg-neutral-800'
+            canSubmit ? 'bg-accent active:opacity-80' : 'bg-elevated'
           }`}>
           <Text
             className={`text-base font-semibold ${
-              canSubmit ? 'text-white' : 'text-neutral-500'
+              canSubmit ? 'text-canvas' : 'text-fg-muted'
             }`}>
             {parent ? 'Add subtask' : 'Add task'}
           </Text>
@@ -224,28 +226,20 @@ export const AddTodoSheet = forwardRef<AddTodoSheetRef>(function AddTodoSheet(_p
 });
 
 const styles = StyleSheet.create({
-  background: { backgroundColor: '#171717' },
-  handle: { backgroundColor: '#525252', width: 40 },
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 36, gap: 10 },
   titleInput: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
   },
   input: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
   },
   notesInput: {
-    backgroundColor: '#0a0a0a',
-    color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,

@@ -1,12 +1,13 @@
-import { ChevronDown, ChevronRight, Clock } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
+import { Layout, ThemeColors, Type, useThemeColors } from "@/constants/theme";
 import { daysBetween, formatMinutes, shortDateLabel, todayKey, weekdayShort } from "@/lib/date";
+import { categoryColor } from "@/lib/palette";
 import { ScheduledAt } from "@/lib/schedule";
-import { getStatus } from "@/lib/todo";
+import { extractTags, getStatus, stripTags } from "@/lib/todo";
 import { Todo } from "@/types/todo";
 
-import { StatusCheckbox } from "./status-checkbox";
+import { StatusMarker } from "./status-marker";
 
 function scheduleLabel({ block, date }: ScheduledAt): string {
   const today = todayKey();
@@ -18,35 +19,84 @@ function scheduleLabel({ block, date }: ScheduledAt): string {
   return `${shortDateLabel(date)} ${time}`;
 }
 
-const PRIORITY_BG: Record<string, string> = {
-  important: "bg-priority-important",
-  urgent: "bg-priority-urgent",
-};
-
-function formatDue(dueSeconds: number): { label: string; overdue: boolean } {
-  const date = new Date(dueSeconds * 1000);
-  return {
-    label: date.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-    overdue: dueSeconds * 1000 < Date.now(),
-  };
+function isOverdue(dueSeconds: number): boolean {
+  return dueSeconds * 1000 < Date.now();
 }
 
-/** Render todo text, highlighting inline #tags. */
-function TodoText({ text, done }: { text: string; done: boolean }) {
-  const parts = text.split(/(#\w+)/g);
+function dueLabel(dueSeconds: number): string {
+  return new Date(dueSeconds * 1000).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Tree guides — DESIGN.md §4.3.
+ *
+ * Drawn as geometry, NOT as `│`/`├─` text glyphs. A glyph only exists on its own
+ * text line, so the line would break across each row's vertical padding and the
+ * subtree would read as detached from its parent. These Views stretch the full
+ * row height, so the vertical runs unbroken from one row into the next.
+ */
+function TreeGuides({ guides, color }: { guides: boolean[]; color: string }) {
+  if (!guides.length) return null;
+
   return (
-    <Text className={`text-base ${done ? "text-neutral-500 line-through" : "text-neutral-100"}`}>
-      {parts.map((part, i) =>
-        part.startsWith("#") ? (
-          <Text
+    <View className="flex-row self-stretch">
+      {guides.map((hasNext, i) => {
+        const isConnector = i === guides.length - 1;
+        // Ancestors only draw a line while their subtree continues below.
+        const showVertical = isConnector || hasNext;
+        // The connector stops at the marker's centreline unless siblings follow.
+        const stopsAtConnect = isConnector && !hasNext;
+
+        return (
+          <View
             key={i}
-            className={done ? "text-neutral-500" : "text-blue-400"}>
-            {part}
-          </Text>
-        ) : (
-          part
-        ),
-      )}
+            style={{ width: Layout.treeColumn }}
+            className="self-stretch">
+            {showVertical ? (
+              <View
+                style={{
+                  position: "absolute",
+                  left: Layout.treeLineX,
+                  top: 0,
+                  width: 1,
+                  backgroundColor: color,
+                  ...(stopsAtConnect
+                    ? { height: Layout.treeConnectY }
+                    : { bottom: 0 }),
+                }}
+              />
+            ) : null}
+
+            {isConnector ? (
+              <View
+                style={{
+                  position: "absolute",
+                  left: Layout.treeLineX,
+                  top: Layout.treeConnectY,
+                  width: Layout.treeColumn - Layout.treeLineX,
+                  height: 1,
+                  backgroundColor: color,
+                }}
+              />
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/** One `#tag` chip on the meta line, in its own category hue. */
+function Tag({ tag, colors }: { tag: string; colors: ThemeColors }) {
+  const hue = categoryColor(tag, colors);
+  return (
+    <Text
+      style={[Type.meta, hue ? { color: hue } : undefined]}
+      className={hue ? undefined : "text-fg-muted"}>
+      #{tag}
     </Text>
   );
 }
@@ -55,7 +105,8 @@ interface Props {
   todo: Todo;
   onToggle: () => void;
   onLongPress?: () => void;
-  hasChildren?: boolean;
+  /** Ancestor sibling flags from `rowsForDisplay`. Empty for roots. */
+  guides?: boolean[];
   childCount?: number;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -67,103 +118,141 @@ export function TodoItem({
   todo,
   onToggle,
   onLongPress,
-  hasChildren = false,
+  guides = [],
   childCount = 0,
   collapsed = false,
   onToggleCollapse,
   scheduled,
   onPressScheduled,
 }: Props) {
+  const colors = useThemeColors();
   const status = getStatus(todo);
-  const due = todo.due_at ? formatDue(todo.due_at) : null;
-  const priorities = todo.priorities ?? [];
-  const hasMeta = due || priorities.length > 0 || todo.estimated_hours || scheduled;
+
+  // Tags are lifted out of the title and rendered on the meta line beneath it.
+  // A todo that is *only* tags keeps them as its title instead, so they are not
+  // printed twice.
+  const stripped = stripTags(todo.text);
+  const title = stripped || todo.text.trim();
+  const tags = stripped ? extractTags(todo.text) : [];
+
+  const overdue = todo.due_at != null && !todo.done && isOverdue(todo.due_at);
+  const hasMeta =
+    tags.length > 0 ||
+    todo.due_at != null ||
+    todo.estimated_hours != null ||
+    scheduled != null;
 
   return (
+    // Vertical padding lives on the inner columns, not here: the guides must
+    // stretch the full row height for the tree line to stay continuous.
     <Pressable
       onPress={onToggle}
       onLongPress={onLongPress}
       delayLongPress={300}
-      style={{ marginLeft: todo.depth * 20 }}
-      className="flex-row gap-2 items-start py-2 rounded-lg active:bg-neutral-900">
+      className="flex-row items-stretch active:bg-elevated">
+      <TreeGuides
+        guides={guides}
+        color={colors.fgFaint}
+      />
+
+      {/*
+        Descender into this row's own subtree. Without it the tree line would
+        only start at the first child's row, leaving the parent visually detached
+        from the children it owns.
+      */}
+      {childCount > 0 && !collapsed ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: Layout.treeColumn * guides.length + Layout.treeLineX,
+            top: Layout.treeDescendY,
+            bottom: 0,
+            width: 1,
+            backgroundColor: colors.fgFaint,
+          }}
+        />
+      ) : null}
+
       <View
-        className="justify-center"
-        style={{ height: 24 }}>
-        <StatusCheckbox
+        className="self-start"
+        style={{ paddingVertical: Layout.rowPaddingY }}>
+        <StatusMarker
           status={status}
+          priorities={todo.priorities}
           onPress={onToggle}
+          size={Layout.markerSize}
         />
       </View>
-      <View className="flex-1 gap-1">
-        <View className="flex-row gap-2 items-center">
+
+      <View
+        className="flex-1 self-start"
+        style={{ gap: Layout.rowGap, marginLeft: 6, paddingVertical: Layout.rowPaddingY }}>
+        <View className="flex-row gap-2 items-start">
           <View className="flex-1">
-            <TodoText
-              text={todo.text}
-              done={todo.done}
-            />
+            <Text
+              style={Type.body}
+              className={todo.done ? "text-fg-faint line-through" : "text-fg"}>
+              {title}
+            </Text>
           </View>
-          {hasChildren && childCount > 0 ? (
+
+          {childCount > 0 ? (
             <Pressable
-              hitSlop={8}
+              hitSlop={10}
               onPress={onToggleCollapse}
               accessibilityRole="button"
               accessibilityLabel={collapsed ? "Expand subtasks" : "Collapse subtasks"}
-              className="flex-row gap-1 items-center py-0.5 px-2 rounded-full bg-neutral-800 active:opacity-60">
-              <Text className="text-xs text-neutral-400">{childCount}</Text>
-              {collapsed ? (
-                <ChevronRight
-                  size={13}
-                  color="#a3a3a3"
-                  strokeWidth={2.5}
-                />
-              ) : (
-                <ChevronDown
-                  size={13}
-                  color="#a3a3a3"
-                  strokeWidth={2.5}
-                />
-              )}
+              className="rounded-sm active:bg-elevated">
+              <Text
+                style={Type.meta}
+                className="text-fg-muted">
+                {collapsed ? "▸" : "▾"} {childCount}
+              </Text>
             </Pressable>
           ) : null}
         </View>
+
         {hasMeta ? (
-          <View className={`flex-row flex-wrap items-center gap-1.5 ${todo.done ? "opacity-40" : ""}`}>
-            {priorities.map((p) => (
-              <View
-                key={p}
-                className={`rounded-full px-2 py-0.5 ${PRIORITY_BG[p] ?? "bg-priority-info"}`}>
-                <Text className="text-xs font-medium text-neutral-950">{p}</Text>
-              </View>
+          <View
+            className="flex-row flex-wrap items-center"
+            style={{ gap: Layout.metaGap, opacity: todo.done ? 0.4 : 1 }}>
+            {tags.map((tag) => (
+              <Tag
+                key={tag}
+                tag={tag}
+                colors={colors}
+              />
             ))}
-            {due ? (
-              <View
-                className={`rounded-full px-2 py-0.5 ${
-                  due.overdue && !todo.done ? "bg-red-500/20" : "bg-neutral-800"
-                }`}>
-                <Text className={`text-xs ${due.overdue && !todo.done ? "text-red-400" : "text-neutral-400"}`}>
-                  {due.label}
-                </Text>
-              </View>
+
+            {todo.estimated_hours != null ? (
+              <Text
+                style={Type.meta}
+                className="text-ok">
+                {todo.estimated_hours}h
+              </Text>
             ) : null}
-            {todo.estimated_hours ? (
-              <View className="py-0.5 px-2 rounded-full bg-neutral-800">
-                <Text className="text-xs text-neutral-400">{todo.estimated_hours}h</Text>
-              </View>
+
+            {todo.due_at != null ? (
+              <Text
+                style={Type.meta}
+                className={overdue ? "text-danger" : "text-fg-muted"}>
+                {overdue ? "OVERDUE" : dueLabel(todo.due_at)}
+              </Text>
             ) : null}
+
             {scheduled ? (
               <Pressable
-                hitSlop={6}
+                hitSlop={8}
                 onPress={onPressScheduled}
                 accessibilityRole="button"
                 accessibilityLabel={`Scheduled ${scheduleLabel(scheduled)}`}
-                style={{ backgroundColor: "#111c2d" }}
-                className="flex-row gap-1 items-center py-0.5 px-2 rounded-full active:opacity-60">
-                <Clock
-                  size={11}
-                  color="#60a5fa"
-                  strokeWidth={2.5}
-                />
-                <Text className="text-xs text-blue-400">{scheduleLabel(scheduled)}</Text>
+                className="rounded-sm active:bg-elevated">
+                <Text
+                  style={Type.meta}
+                  className="text-accent">
+                  {scheduleLabel(scheduled)}
+                </Text>
               </Pressable>
             ) : null}
           </View>

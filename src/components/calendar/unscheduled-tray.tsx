@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, SharedValue } from 'react-native-reanimated';
 
+import { useThemeName } from '@/constants/theme';
 import { paletteForTag } from '@/lib/block';
 import { extractCategory } from '@/lib/todo';
 import { Todo } from '@/types/todo';
@@ -28,7 +29,8 @@ function TrayChip({
   onDragEnd,
   onPressTodo,
 }: { todo: Todo } & Omit<TrayProps, 'todos'>) {
-  const palette = paletteForTag(extractCategory(todo.text).toLowerCase());
+  const theme = useThemeName();
+  const palette = paletteForTag(extractCategory(todo.text).toLowerCase(), theme);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -77,8 +79,8 @@ export function UnscheduledTray({ todos, ...handlers }: TrayProps) {
   if (!todos.length) return null;
 
   return (
-    <View className="border-t border-neutral-800 bg-neutral-950 pb-1 pt-2">
-      <Text className="px-4 pb-1.5 text-[10px] uppercase tracking-wide text-neutral-600">
+    <View className="border-t border-line bg-canvas pb-1 pt-2">
+      <Text className="px-4 pb-1.5 text-[10px] uppercase tracking-wide text-fg-muted">
         Unscheduled · hold to drag onto the grid
       </Text>
       <ScrollView

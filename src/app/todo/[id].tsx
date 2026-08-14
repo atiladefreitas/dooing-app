@@ -3,6 +3,7 @@ import { ReactNode, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
+import { useThemeColors } from '@/constants/theme';
 import { getStatus } from '@/lib/todo';
 import { useTodos } from '@/store/todos';
 
@@ -19,7 +20,7 @@ function endOfDayIn(days: number): number {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View className="gap-2">
-      <Text className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+      <Text className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
         {label}
       </Text>
       {children}
@@ -31,13 +32,14 @@ function Chip({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      className="rounded-full bg-neutral-800 px-3 py-1 active:opacity-70">
-      <Text className="text-sm text-neutral-200">{label}</Text>
+      className="rounded-full bg-elevated px-3 py-1 active:opacity-70">
+      <Text className="text-sm text-fg">{label}</Text>
     </Pressable>
   );
 }
 
 export default function TodoDetailScreen() {
+  const c = useThemeColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const todo = useTodos((s) => s.todos.find((t) => t.id === id));
   const update = useTodos((s) => s.update);
@@ -48,8 +50,8 @@ export default function TodoDetailScreen() {
 
   if (!todo) {
     return (
-      <View className="flex-1 items-center justify-center bg-neutral-950">
-        <Text className="text-neutral-400">Todo not found.</Text>
+      <View className="flex-1 items-center justify-center bg-canvas">
+        <Text className="text-fg-dim">Todo not found.</Text>
       </View>
     );
   }
@@ -87,7 +89,7 @@ export default function TodoDetailScreen() {
 
   return (
     <KeyboardAwareScrollView
-      style={{ flex: 1, backgroundColor: '#0a0a0a' }}
+      style={{ flex: 1, backgroundColor: c.canvas }}
       contentContainerStyle={{ padding: 16, gap: 20 }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
@@ -95,8 +97,8 @@ export default function TodoDetailScreen() {
       <Field label="Status">
         <Pressable
           onPress={() => toggle(todo.id)}
-          className="self-start rounded-lg bg-neutral-900 px-3 py-2 active:opacity-70">
-          <Text className="text-base capitalize text-neutral-200">
+          className="self-start rounded-lg bg-surface px-3 py-2 active:opacity-70">
+          <Text className="text-base capitalize text-fg">
             {status.replace('_', ' ')} — tap to advance
           </Text>
         </Pressable>
@@ -109,7 +111,7 @@ export default function TodoDetailScreen() {
           multiline
           placeholder="Task text (use #tags)"
           placeholderTextColor="#666"
-          className="rounded-lg bg-neutral-900 px-3 py-2 text-base text-white"
+          className="rounded-lg bg-surface px-3 py-2 text-base text-fg"
           style={{ textAlignVertical: 'top' }}
         />
       </Field>
@@ -123,10 +125,10 @@ export default function TodoDetailScreen() {
               <Pressable
                 key={p}
                 onPress={() => togglePriority(p)}
-                className={`rounded-full px-3 py-1 ${on ? onBg : 'bg-neutral-800'}`}>
+                className={`rounded-full px-3 py-1 ${on ? onBg : 'bg-elevated'}`}>
                 <Text
                   className={`text-sm ${
-                    on ? 'font-semibold text-neutral-950' : 'text-neutral-300'
+                    on ? 'font-semibold text-canvas' : 'text-fg'
                   }`}>
                   {p}
                 </Text>
@@ -144,7 +146,7 @@ export default function TodoDetailScreen() {
           <Chip label="Clear" onPress={() => update(todo.id, { due_at: null })} />
         </View>
         {todo.due_at ? (
-          <Text className="text-sm text-neutral-400">
+          <Text className="text-sm text-fg-dim">
             {new Date(todo.due_at * 1000).toLocaleDateString()}
           </Text>
         ) : null}
@@ -160,7 +162,7 @@ export default function TodoDetailScreen() {
           keyboardType="decimal-pad"
           placeholder="e.g. 2"
           placeholderTextColor="#666"
-          className="w-24 rounded-lg bg-neutral-900 px-3 py-2 text-base text-white"
+          className="w-24 rounded-lg bg-surface px-3 py-2 text-base text-fg"
         />
       </Field>
 
@@ -171,7 +173,7 @@ export default function TodoDetailScreen() {
           multiline
           placeholder="Scratchpad notes…"
           placeholderTextColor="#666"
-          className="min-h-24 rounded-lg bg-neutral-900 px-3 py-2 text-base text-white"
+          className="min-h-24 rounded-lg bg-surface px-3 py-2 text-base text-fg"
           style={{ textAlignVertical: 'top' }}
         />
       </Field>
@@ -185,20 +187,20 @@ export default function TodoDetailScreen() {
             returnKeyType="done"
             placeholder="Subtask…"
             placeholderTextColor="#666"
-            className="flex-1 rounded-lg bg-neutral-900 px-3 py-2 text-base text-white"
+            className="flex-1 rounded-lg bg-surface px-3 py-2 text-base text-fg"
           />
           <Pressable
             onPress={addSubtask}
-            className="rounded-lg bg-blue-500 px-4 py-2 active:opacity-70">
-            <Text className="font-semibold text-white">Add</Text>
+            className="rounded-lg bg-accent px-4 py-2 active:opacity-70">
+            <Text className="font-semibold text-canvas">Add</Text>
           </Pressable>
         </View>
       </Field>
 
       <Pressable
         onPress={confirmDelete}
-        className="mt-4 items-center rounded-lg border border-red-500/40 py-3 active:opacity-70">
-        <Text className="font-semibold text-red-400">Delete todo</Text>
+        className="mt-4 items-center rounded-lg border border-danger/40 py-3 active:opacity-70">
+        <Text className="font-semibold text-danger">Delete todo</Text>
       </Pressable>
     </KeyboardAwareScrollView>
   );

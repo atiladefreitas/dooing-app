@@ -1,6 +1,7 @@
 import { forwardRef, useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { useThemeName } from '@/constants/theme';
 import { paletteForTag } from '@/lib/block';
 import { dayOfMonth, todayKey, weekdayShort } from '@/lib/date';
 import { dueTodosOn } from '@/lib/schedule';
@@ -25,7 +26,8 @@ interface GridViewProps {
 }
 
 function DueChip({ todo, onPress }: { todo: Todo; onPress: () => void }) {
-  const palette = paletteForTag(extractCategory(todo.text).toLowerCase());
+  const theme = useThemeName();
+  const palette = paletteForTag(extractCategory(todo.text).toLowerCase(), theme);
   return (
     <Pressable
       onPress={onPress}
@@ -71,7 +73,7 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
 
   return (
     <View className="flex-1">
-      <View className="flex-row border-b border-neutral-800">
+      <View className="flex-row border-b border-line">
         <View style={{ width: GUTTER_W }} />
         {days.map((date) => {
           const isToday = date === today;
@@ -82,17 +84,17 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
               className="flex-1 items-center py-2 active:opacity-60">
               <Text
                 className={`text-[10px] uppercase tracking-wide ${
-                  isToday ? 'text-blue-400' : 'text-neutral-500'
+                  isToday ? 'text-accent' : 'text-fg-muted'
                 }`}>
                 {weekdayShort(date)}
               </Text>
               <View
                 className={`mt-0.5 h-7 w-7 items-center justify-center rounded-full ${
-                  isToday ? 'bg-blue-500' : ''
+                  isToday ? 'bg-accent' : ''
                 }`}>
                 <Text
                   className={`text-[15px] tabular-nums ${
-                    isToday ? 'font-bold text-white' : 'text-neutral-200'
+                    isToday ? 'font-bold text-canvas' : 'text-fg'
                   }`}>
                   {dayOfMonth(date)}
                 </Text>
@@ -103,9 +105,9 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
       </View>
 
       {hasDue ? (
-        <View className="flex-row border-b border-neutral-800 bg-neutral-950">
+        <View className="flex-row border-b border-line bg-canvas">
           <View style={{ width: GUTTER_W }} className="justify-center pr-2">
-            <Text className="text-right text-[9px] uppercase tracking-wide text-neutral-600">
+            <Text className="text-right text-[9px] uppercase tracking-wide text-fg-muted">
               due
             </Text>
           </View>

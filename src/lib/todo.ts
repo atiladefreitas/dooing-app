@@ -19,6 +19,32 @@ export function extractCategory(text: string): string {
   return text.match(/#(\w+)/)?.[1] ?? '';
 }
 
+/**
+ * Every inline `#tag`, in order, deduped and without the `#`.
+ *
+ * Presentation only — `text` remains the source of truth and still round-trips to
+ * the Neovim plugin verbatim.
+ */
+export function extractTags(text: string): string[] {
+  const seen = new Set<string>();
+  for (const [, tag] of text.matchAll(/#(\w+)/g)) seen.add(tag);
+  return [...seen];
+}
+
+/**
+ * The title with its `#tags` lifted out, for rendering them beneath it.
+ *
+ * Returns '' when the text is nothing but tags — callers decide the fallback.
+ * (todo-item shows the tags as the title in that case, rather than printing them
+ * twice.)
+ */
+export function stripTags(text: string): string {
+  return text
+    .replace(/#\w+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /** Coerce an unknown to a finite number, or null. */
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -173,15 +199,31 @@ export function compareTodos(a: Todo, b: Todo): number {
   return (a.created_at ?? 0) - (b.created_at ?? 0);
 }
 
+export interface DisplayRow {
+  todo: Todo;
+  /**
+   * One flag per ancestor level, shallowest first, for drawing tree guides —
+   * see DESIGN.md §4.3. Each flag answers "does the node at this level have a
+   * following sibling?", which decides `│` vs blank for ancestors and `├─` vs
+   * `└─` for the node's own connector. Length always equals the node's depth,
+   * so roots get an empty array.
+   */
+  guides: boolean[];
+  childCount: number;
+}
+
 /**
  * Produce a render-ready list: children follow their parent, siblings sorted by
  * compareTodos, and `depth` recomputed from the actual tree so it can never
  * drift. Orphans (parent_id points to a missing todo) are promoted to top-level.
+ *
+ * Collapsed nodes hide their subtree but still report `childCount`, so the fold
+ * marker can show what is hidden.
  */
-export function orderForDisplay(
+export function rowsForDisplay(
   todos: Todo[],
   collapsed?: ReadonlySet<string>
-): Todo[] {
+): DisplayRow[] {
   const ids = new Set(todos.map((t) => t.id));
   const byParent = new Map<string, Todo[]>();
   const roots: Todo[] = [];
@@ -197,15 +239,24 @@ export function orderForDisplay(
     else byParent.set(t.parent_id, [t]);
   }
 
-  const result: Todo[] = [];
-  const walk = (node: Todo, depth: number) => {
-    result.push(node.depth === depth ? node : { ...node, depth });
-    // Collapsed nodes hide their whole subtree.
+  const childrenOf = (id: string) => (byParent.get(id) ?? []).slice().sort(compareTodos);
+
+  const result: DisplayRow[] = [];
+  const walk = (node: Todo, depth: number, guides: boolean[]) => {
+    const children = childrenOf(node.id);
+    result.push({
+      todo: node.depth === depth ? node : { ...node, depth },
+      guides,
+      childCount: children.length,
+    });
     if (collapsed?.has(node.id)) return;
-    const children = (byParent.get(node.id) ?? []).slice().sort(compareTodos);
-    for (const child of children) walk(child, depth + 1);
+    children.forEach((child, i) =>
+      walk(child, depth + 1, [...guides, i < children.length - 1])
+    );
   };
-  for (const root of roots.slice().sort(compareTodos)) walk(root, 0);
+
+  const rootList = roots.slice().sort(compareTodos);
+  rootList.forEach((root) => walk(root, 0, []));
 
   return result;
 }

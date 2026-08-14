@@ -19,16 +19,18 @@ import {
   GRANULARITY,
   MIN_DURATION,
   PositionedBlock,
+  cascadeStep,
   layoutOverlaps,
   paletteForBlock,
   stripTags,
 } from '@/lib/block';
+import { Type, useThemeName } from '@/constants/theme';
 import { formatMinutes, minutesNow, todayKey } from '@/lib/date';
 import { getStatus } from '@/lib/todo';
 import { Block } from '@/types/block';
 import { Todo } from '@/types/todo';
 
-import { StatusCheckbox } from '../status-checkbox';
+import { StatusMarker } from '../status-marker';
 
 export const HOUR_HEIGHT = 62;
 export const GUTTER_W = 52;
@@ -67,7 +69,7 @@ function HourLines() {
           key={h}
           pointerEvents="none"
           style={{ top: h * HOUR_HEIGHT }}
-          className="absolute right-0 left-0 h-px bg-neutral-800"
+          className="absolute right-0 left-0 h-px bg-elevated"
         />
       ))}
       {HOURS.map((h) => (
@@ -75,7 +77,7 @@ function HourLines() {
           key={`half-${h}`}
           pointerEvents="none"
           style={{ top: h * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
-          className="absolute right-0 left-0 h-px bg-neutral-900"
+          className="absolute right-0 left-0 h-px bg-surface"
         />
       ))}
     </>
@@ -89,7 +91,7 @@ function Gutter() {
         <Text
           key={h}
           style={{ top: h * HOUR_HEIGHT - 7 }}
-          className="absolute right-2 text-[11px] tabular-nums text-neutral-600">
+          className="absolute right-2 text-[11px] tabular-nums text-fg-muted">
           {h === 0 ? '' : formatMinutes(h * 60)}
         </Text>
       ))}
@@ -128,8 +130,9 @@ function GridBlock({
   setScrollEnabled,
   setHint,
 }: GridBlockProps) {
-  const { block, column, columns } = item;
-  const palette = paletteForBlock(block);
+  const { block, depth, overflow } = item;
+  const theme = useThemeName();
+  const palette = paletteForBlock(block, theme);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -137,8 +140,12 @@ function GridBlock({
   const active = useSharedValue(0);
   const lastStep = useSharedValue(0);
 
-  const slotWidth = (colWidth - 4) / columns;
-  const left = dayIndex * colWidth + 2 + column * slotWidth;
+  // Cascade: every block keeps the same right edge and steps in from the left, so
+  // the frontmost is fully readable and those behind still show their colour bar
+  // and the start of their label.
+  const indent = depth * cascadeStep(colWidth);
+  const slotWidth = colWidth - 4 - indent;
+  const left = dayIndex * colWidth + 2 + indent;
   const top = (block.start_min / 60) * HOUR_HEIGHT;
   const height = Math.max((block.duration_min / 60) * HOUR_HEIGHT, 22);
 
@@ -288,7 +295,8 @@ function GridBlock({
     transform: [{ translateX: translateX.get() }, { translateY: translateY.get() }],
     height: Math.max(height + extraHeight.get(), 22),
     borderColor: active.get() ? palette.bar : palette.border,
-    zIndex: active.get() ? 50 : 1,
+    // Deeper in the cascade means later start, drawn on top.
+    zIndex: active.get() ? 50 : 1 + depth,
     elevation: active.get() ? 12 : 0,
   }));
 
@@ -314,12 +322,20 @@ function GridBlock({
           style={{ backgroundColor: palette.bar }}
           className="absolute top-0 bottom-0 left-0 w-1"
         />
+        {/* Blocks past the cascade cap are stacked, not dropped — say how many. */}
+        {overflow > 0 ? (
+          <Text
+            style={{ ...Type.status, color: palette.text }}
+            className="absolute right-1 top-0.5">
+            +{overflow}
+          </Text>
+        ) : null}
         <View className="flex-row flex-1 gap-1 items-start px-1.5 py-1 pl-2.5">
           {todo ? (
             <View className="pt-px">
-              <StatusCheckbox
+              <StatusMarker
                 status={status ?? 'pending'}
-                size={14}
+                size={11}
                 onPress={() => onToggleTodo(todo.id)}
               />
             </View>
@@ -371,8 +387,8 @@ function NowIndicator({ dayIndex, colWidth }: { dayIndex: number; colWidth: numb
         left: dayIndex * colWidth,
         width: colWidth,
       }}
-      className="absolute h-px bg-red-500">
-      <View className="absolute -top-1 -left-0.5 h-2 w-2 rounded-full bg-red-500" />
+      className="absolute h-px bg-danger">
+      <View className="absolute -top-1 -left-0.5 h-2 w-2 rounded-full bg-danger" />
     </View>
   );
 }
@@ -529,10 +545,10 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
   const positioned = useMemo(() => {
     const out: { date: string; index: number; items: PositionedBlock[] }[] = [];
     days.forEach((date, index) => {
-      out.push({ date, index, items: layoutOverlaps(blocksByDay[date] ?? []) });
+      out.push({ date, index, items: layoutOverlaps(blocksByDay[date] ?? [], colWidth) });
     });
     return out;
-  }, [blocksByDay, days]);
+  }, [blocksByDay, days, colWidth]);
 
   const handleMove = useCallback(
     (block: Block, dayIndex: number, startMin: number) => {
@@ -569,7 +585,7 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
                     key={`sep-${date}`}
                     pointerEvents="none"
                     style={{ left: i * colWidth }}
-                    className="absolute top-0 bottom-0 w-px bg-neutral-800"
+                    className="absolute top-0 bottom-0 w-px bg-elevated"
                   />
                 )
               )}
@@ -580,8 +596,8 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
 
               <Animated.View
                 pointerEvents="none"
-                style={[draftStyle, { backgroundColor: '#16304d' }]}
-                className="absolute rounded-md border border-dashed border-blue-400"
+                style={draftStyle}
+                className="absolute rounded-md border border-dashed border-accent bg-accent/20"
               />
 
               {positioned.map(({ date, index, items }) =>
@@ -616,8 +632,8 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
       {hint ? (
         <View
           pointerEvents="none"
-          className="absolute top-3 self-center rounded-full bg-neutral-100 px-3 py-1.5 shadow-lg">
-          <Text className="text-xs font-semibold tabular-nums text-neutral-900">{hint}</Text>
+          className="absolute top-3 self-center rounded-full bg-fg px-3 py-1.5 shadow-lg">
+          <Text className="text-xs font-semibold tabular-nums text-canvas">{hint}</Text>
         </View>
       ) : null}
     </View>

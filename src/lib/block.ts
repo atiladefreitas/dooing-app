@@ -1,6 +1,8 @@
+import { CATEGORY_HUES, Palette, ThemeName } from '@/constants/theme';
 import { Block, Recurrence, RecurrenceType } from '@/types/block';
 
 import { dateKey, parseKey, weekdayOf } from './date';
+import { hashTag } from './palette';
 
 export const GRANULARITY = 30;
 export const MIN_DURATION = GRANULARITY;
@@ -180,8 +182,6 @@ export interface BlockPalette {
   muted: string;
 }
 
-export const SURFACE = '#0a0a0a';
-
 function channels(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -195,55 +195,95 @@ function mix(hex: string, base: string, amount: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
 }
 
-function makePalette(bar: string): BlockPalette {
+/**
+ * How a category hue becomes a block's surface, per theme.
+ *
+ * `mix(hue, base, n)` is n parts hue to (1-n) parts background, so the same
+ * formula yields a dark tint on Night and a pale one on Day. Text is the one
+ * asymmetry: Night lightens the hue toward white, Day darkens it toward the
+ * foreground, since it sits on a pale fill.
+ */
+const RECIPE = {
+  night: { fill: 0.24, border: 0.46, dim: 0.78, muted: 0.5, textToward: '#ffffff', text: 0.18 },
+  day: { fill: 0.14, border: 0.4, dim: 0.85, muted: 0.55, textToward: Palette.day.fg, text: 0.55 },
+} as const;
+
+function makePalette(bar: string, theme: ThemeName): BlockPalette {
+  const r = RECIPE[theme];
+  const base = Palette[theme].canvas;
   return {
     bar,
-    fill: mix(bar, SURFACE, 0.24),
-    border: mix(bar, SURFACE, 0.46),
-    text: mix(bar, '#ffffff', 0.18),
-    dim: mix(bar, SURFACE, 0.78),
-    muted: mix(bar, SURFACE, 0.5),
+    fill: mix(bar, base, r.fill),
+    border: mix(bar, base, r.border),
+    text: mix(bar, r.textToward, r.text),
+    dim: mix(bar, base, r.dim),
+    muted: mix(bar, base, r.muted),
   };
 }
 
-const PALETTE: BlockPalette[] = [
-  '#60a5fa',
-  '#4ade80',
-  '#f472b6',
-  '#fbbf24',
-  '#a78bfa',
-  '#22d3ee',
-  '#fb923c',
-  '#f87171',
-  '#2dd4bf',
-  '#818cf8',
-  '#a3e635',
-  '#e879f9',
-].map(makePalette);
+/**
+ * Built from the SAME hue pool and hash the todo list uses (lib/palette.ts), so a
+ * tag reads the same colour in both places. Blue and red are absent by design.
+ */
+const PALETTES: Record<ThemeName, BlockPalette[]> = {
+  night: CATEGORY_HUES.map((hue) => makePalette(Palette.night[hue], 'night')),
+  day: CATEGORY_HUES.map((hue) => makePalette(Palette.day[hue], 'day')),
+};
 
-const NEUTRAL: BlockPalette = makePalette('#a3a3a3');
+const NEUTRALS: Record<ThemeName, BlockPalette> = {
+  night: makePalette(Palette.night.fgMuted, 'night'),
+  day: makePalette(Palette.day.fgMuted, 'day'),
+};
 
-export function paletteForTag(tag: string): BlockPalette {
-  if (!tag) return NEUTRAL;
-  let hash = 2166136261;
-  for (let i = 0; i < tag.length; i += 1) {
-    hash = Math.imul(hash ^ tag.charCodeAt(i), 16777619);
-  }
-  hash = (hash ^ (hash >>> 15)) >>> 0;
-  return PALETTE[hash % PALETTE.length];
+export function paletteForTag(tag: string, theme: ThemeName): BlockPalette {
+  if (!tag) return NEUTRALS[theme];
+  return PALETTES[theme][hashTag(tag) % PALETTES[theme].length];
 }
 
-export function paletteForBlock(block: Block): BlockPalette {
-  return paletteForTag(extractTag(block.title));
+export function paletteForBlock(block: Block, theme: ThemeName): BlockPalette {
+  return paletteForTag(extractTag(block.title), theme);
 }
 
 export interface PositionedBlock {
   block: Block;
-  column: number;
-  columns: number;
+  /** Cascade depth in its overlap cluster. 0 = earliest, leftmost, furthest back. */
+  depth: number;
+  /** Blocks in this cluster past the depth cap. Non-zero only on the topmost block. */
+  overflow: number;
+  /** Blocks in the cluster; 1 means no conflict. */
+  clusterSize: number;
 }
 
-export function layoutOverlaps(blocks: Block[]): PositionedBlock[] {
+/** Hard ceiling on cascade levels; the real cap is width-aware, see below. */
+export const MAX_CASCADE_DEPTH = 3;
+
+/** Frontmost block never shrinks below this fraction of its column. */
+const MIN_FRONT_WIDTH_RATIO = 0.55;
+
+/**
+ * Horizontal indent per cascade level — DESIGN.md §4.5. Scales with column width
+ * so a 7-day week stays legible without wasting space in a single-day view.
+ */
+export function cascadeStep(colWidth: number): number {
+  return Math.min(Math.max(colWidth * 0.13, 8), 22);
+}
+
+/**
+ * Deepest cascade level a column can actually afford.
+ *
+ * A fixed cap of 4 levels reproduces the very bug the cascade replaces: on a
+ * 7-day week (colWidth ≈ 49pt) depth 3 leaves the FRONTMOST block just 19pt wide.
+ * Since indent comes off the width, the cap has to shrink with the column so the
+ * block on top always stays readable. Wide views still get all 4 levels.
+ */
+export function maxCascadeDepth(colWidth: number): number {
+  const affordable = Math.floor((colWidth * (1 - MIN_FRONT_WIDTH_RATIO)) / cascadeStep(colWidth));
+  return Math.max(1, Math.min(MAX_CASCADE_DEPTH, affordable));
+}
+
+/** `colWidth` decides how many cascade levels fit; see maxCascadeDepth. */
+export function layoutOverlaps(blocks: Block[], colWidth: number): PositionedBlock[] {
+  const maxDepth = maxCascadeDepth(colWidth);
   const sorted = blocks
     .slice()
     .sort((a, b) => a.start_min - b.start_min || b.duration_min - a.duration_min);
@@ -254,19 +294,20 @@ export function layoutOverlaps(blocks: Block[]): PositionedBlock[] {
 
   const flush = () => {
     if (!cluster.length) return;
-    const columnEnds: number[] = [];
-    const assigned = cluster.map((block) => {
-      let column = columnEnds.findIndex((end) => end <= block.start_min);
-      if (column === -1) {
-        column = columnEnds.length;
-        columnEnds.push(0);
-      }
-      columnEnds[column] = endMin(block);
-      return { block, column };
+    // Cascade, not column-packing: dividing the column by cluster size produced
+    // ~15pt slivers at three conflicts on a 7-day week, where NO block was
+    // readable. Stepping them right keeps the frontmost fully legible and the
+    // rest identifiable. See DESIGN.md §4.5.
+    const overflow = Math.max(0, cluster.length - (maxDepth + 1));
+    cluster.forEach((block, i) => {
+      out.push({
+        block,
+        depth: Math.min(i, maxDepth),
+        clusterSize: cluster.length,
+        // Only the frontmost block carries the "+n" badge for the whole cluster.
+        overflow: i === cluster.length - 1 ? overflow : 0,
+      });
     });
-    for (const item of assigned) {
-      out.push({ ...item, columns: columnEnds.length });
-    }
     cluster = [];
     clusterEnd = -1;
   };

@@ -11,6 +11,7 @@ import { GridView } from '@/components/calendar/grid-view';
 import { MonthView } from '@/components/calendar/month-view';
 import { TimeGridHandle } from '@/components/calendar/time-grid';
 import { UnscheduledTray } from '@/components/calendar/unscheduled-tray';
+import { useThemeColors, useThemeName } from '@/constants/theme';
 import { blocksByDate, GRANULARITY, paletteForTag } from '@/lib/block';
 import {
   addDays,
@@ -42,6 +43,8 @@ function nextSlot(): number {
 }
 
 export default function CalendarScreen() {
+  const c = useThemeColors();
+  const theme = useThemeName();
   const params = useLocalSearchParams<{ scheduleTodo?: string; date?: string }>();
 
   const blocks = useBlocks((s) => s.blocks);
@@ -223,7 +226,7 @@ export default function CalendarScreen() {
   }));
 
   const dragPalette = dragging
-    ? paletteForTag(extractCategory(dragging.text).toLowerCase())
+    ? paletteForTag(extractCategory(dragging.text).toLowerCase(), theme)
     : null;
 
   const title =
@@ -236,43 +239,43 @@ export default function CalendarScreen() {
   const isToday = view === 'month' ? startOfMonth(cursor) === startOfMonth(todayKey()) : days.includes(todayKey());
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-neutral-950">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-canvas">
       <View className="flex-row items-center justify-between px-4 pb-2 pt-1">
-        <Text className="text-lg font-semibold text-white">{title}</Text>
+        <Text className="text-lg font-semibold text-fg">{title}</Text>
         <View className="flex-row items-center gap-1">
           {!isToday ? (
             <Pressable
               onPress={goToday}
               hitSlop={6}
-              className="mr-1 rounded-full bg-neutral-800 px-3 py-1.5 active:opacity-70">
-              <Text className="text-xs font-medium text-neutral-200">Today</Text>
+              className="mr-1 rounded-full bg-elevated px-3 py-1.5 active:opacity-70">
+              <Text className="text-xs font-medium text-fg">Today</Text>
             </Pressable>
           ) : null}
           <Pressable
             onPress={() => shift(-1)}
             hitSlop={8}
-            className="h-8 w-8 items-center justify-center rounded-full active:bg-neutral-800">
-            <ChevronLeft size={20} color="#d4d4d4" />
+            className="h-8 w-8 items-center justify-center rounded-full active:bg-elevated">
+            <ChevronLeft size={20} color={c.fgDim} />
           </Pressable>
           <Pressable
             onPress={() => shift(1)}
             hitSlop={8}
-            className="h-8 w-8 items-center justify-center rounded-full active:bg-neutral-800">
-            <ChevronRight size={20} color="#d4d4d4" />
+            className="h-8 w-8 items-center justify-center rounded-full active:bg-elevated">
+            <ChevronRight size={20} color={c.fgDim} />
           </Pressable>
         </View>
       </View>
 
-      <View className="mx-4 mb-2 flex-row rounded-lg bg-neutral-900 p-1">
+      <View className="mx-4 mb-2 flex-row rounded-lg bg-surface p-1">
         {VIEWS.map((v) => {
           const active = view === v.value;
           return (
             <Pressable
               key={v.value}
               onPress={() => setView(v.value)}
-              className={`flex-1 items-center rounded-md py-1.5 ${active ? 'bg-neutral-700' : ''}`}>
+              className={`flex-1 items-center rounded-md py-1.5 ${active ? 'bg-elevated' : ''}`}>
               <Text
-                className={`text-[13px] ${active ? 'font-semibold text-white' : 'text-neutral-400'}`}>
+                className={`text-[13px] ${active ? 'font-semibold text-fg' : 'text-fg-dim'}`}>
                 {v.label}
               </Text>
             </Pressable>
@@ -340,11 +343,11 @@ export default function CalendarScreen() {
           <View
             style={{ backgroundColor: dragPalette.bar }}
             className="rounded-lg px-3 py-2 shadow-lg">
-            <Text numberOfLines={1} className="text-[12px] font-semibold text-neutral-950">
+            <Text numberOfLines={1} className="text-[12px] font-semibold text-canvas">
               {dragging.text}
             </Text>
             {dropHint ? (
-              <Text className="text-[10px] text-neutral-800">{dropHint}</Text>
+              <Text className="text-[10px] text-canvas">{dropHint}</Text>
             ) : null}
           </View>
         </Animated.View>
@@ -361,8 +364,8 @@ export default function CalendarScreen() {
         }
         accessibilityLabel="Add time block"
         style={{ elevation: 8 }}
-        className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-blue-500 shadow-lg shadow-blue-500/40 active:opacity-80">
-        <Plus size={26} color="#ffffff" strokeWidth={2.5} />
+        className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg shadow-blue-500/40 active:opacity-80">
+        <Plus size={26} color={c.canvas} strokeWidth={2.5} />
       </Pressable>
 
       <BlockEditorSheet

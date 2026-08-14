@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { useThemeName } from '@/constants/theme';
 import { blocksForDate, paletteForBlock, paletteForTag, stripTags } from '@/lib/block';
 import {
   dayOfMonth,
@@ -17,7 +18,7 @@ import { extractCategory, getStatus } from '@/lib/todo';
 import { Block } from '@/types/block';
 import { Todo } from '@/types/todo';
 
-import { StatusCheckbox } from '../status-checkbox';
+import { StatusMarker } from '../status-marker';
 
 const WEEK_START = 0;
 const MAX_BARS = 3;
@@ -37,18 +38,19 @@ interface MonthViewProps {
 }
 
 function DensityBars({ blocks }: { blocks: Block[] }) {
+  const theme = useThemeName();
   const extra = blocks.length - MAX_BARS;
   return (
     <View style={{ height: BAR_AREA }} className="w-full items-stretch px-1.5 pt-1">
       {blocks.slice(0, MAX_BARS).map((block) => (
         <View
           key={block.id}
-          style={{ backgroundColor: paletteForBlock(block).bar }}
+          style={{ backgroundColor: paletteForBlock(block, theme).bar }}
           className="mb-[2px] h-[3px] rounded-full"
         />
       ))}
       {extra > 0 ? (
-        <Text className="text-center text-[8px] leading-[9px] text-neutral-500">+{extra}</Text>
+        <Text className="text-center text-[8px] leading-[9px] text-fg-muted">+{extra}</Text>
       ) : null}
     </View>
   );
@@ -66,6 +68,7 @@ export function MonthView({
   onOpenTodo,
   onToggleTodo,
 }: MonthViewProps) {
+  const theme = useThemeName();
   const today = todayKey();
   const matrix = useMemo(() => monthMatrix(cursor, WEEK_START), [cursor]);
   const initials = useMemo(() => weekdayInitials(WEEK_START), []);
@@ -87,7 +90,7 @@ export function MonthView({
       <View className="flex-row px-1 pb-1">
         {initials.map((label, i) => (
           <View key={i} className="flex-1 items-center">
-            <Text className="text-[10px] uppercase text-neutral-600">{label}</Text>
+            <Text className="text-[10px] uppercase text-fg-muted">{label}</Text>
           </View>
         ))}
       </View>
@@ -104,19 +107,19 @@ export function MonthView({
                   key={date}
                   onPress={() => (isSelected ? onOpenDay(date) : onSelect(date))}
                   className={`flex-1 items-center rounded-lg pb-1 pt-1.5 ${
-                    isSelected ? 'bg-neutral-800' : 'active:bg-neutral-900'
+                    isSelected ? 'bg-elevated' : 'active:bg-surface'
                   }`}>
                   <View
                     className={`h-6 w-6 items-center justify-center rounded-full ${
-                      isToday ? 'bg-blue-500' : ''
+                      isToday ? 'bg-accent' : ''
                     }`}>
                     <Text
                       className={`text-[13px] tabular-nums ${
                         isToday
-                          ? 'font-bold text-white'
+                          ? 'font-bold text-canvas'
                           : inMonth
-                            ? 'text-neutral-200'
-                            : 'text-neutral-700'
+                            ? 'text-fg'
+                            : 'text-fg-faint'
                       }`}>
                       {dayOfMonth(date)}
                     </Text>
@@ -129,16 +132,16 @@ export function MonthView({
         ))}
       </View>
 
-      <View className="mt-2 flex-row items-baseline justify-between border-t border-neutral-800 px-4 pb-1 pt-3">
-        <Text className="text-sm font-semibold text-neutral-100">
+      <View className="mt-2 flex-row items-baseline justify-between border-t border-line px-4 pb-1 pt-3">
+        <Text className="text-sm font-semibold text-fg">
           {longDateLabel(selected)}
         </Text>
         <Pressable onPress={() => onOpenDay(selected)} hitSlop={8}>
-          <Text className="text-xs text-blue-400">Open day</Text>
+          <Text className="text-xs text-accent">Open day</Text>
         </Pressable>
       </View>
       {booked ? (
-        <Text className="px-4 pb-1 text-[11px] text-neutral-500">
+        <Text className="px-4 pb-1 text-[11px] text-fg-muted">
           {formatDuration(booked)} blocked
         </Text>
       ) : null}
@@ -147,21 +150,21 @@ export function MonthView({
         className="flex-1"
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, gap: 6 }}>
         {dayDue.map((todo) => {
-          const palette = paletteForTag(extractCategory(todo.text).toLowerCase());
+          const palette = paletteForTag(extractCategory(todo.text).toLowerCase(), theme);
           return (
             <Pressable
               key={`due-${todo.id}`}
               onPress={() => onOpenTodo(todo)}
-              className="flex-row items-center gap-2 rounded-lg bg-neutral-900 px-3 py-2 active:opacity-70">
-              <StatusCheckbox
+              className="flex-row items-center gap-2 rounded-lg bg-surface px-3 py-2 active:opacity-70">
+              <StatusMarker
                 status={getStatus(todo)}
-                size={16}
+                size={12}
                 onPress={() => onToggleTodo(todo.id)}
               />
               <Text
                 numberOfLines={1}
                 className={`flex-1 text-[13px] ${
-                  todo.done ? 'text-neutral-500 line-through' : 'text-neutral-200'
+                  todo.done ? 'text-fg-muted line-through' : 'text-fg'
                 }`}>
                 {todo.text}
               </Text>
@@ -177,14 +180,14 @@ export function MonthView({
         })}
 
         {dayBlocks.map((block) => {
-          const palette = paletteForBlock(block);
+          const palette = paletteForBlock(block, theme);
           const todo = todoForBlock(block.id);
           return (
             <Pressable
               key={block.id}
               onPress={() => onOpenBlock(block, selected)}
               className="flex-row items-center gap-3 active:opacity-70">
-              <Text className="w-11 text-right text-[11px] tabular-nums text-neutral-500">
+              <Text className="w-11 text-right text-[11px] tabular-nums text-fg-muted">
                 {formatMinutes(block.start_min)}
               </Text>
               <View
@@ -196,9 +199,9 @@ export function MonthView({
                 />
                 {todo ? (
                   <View className="ml-1">
-                    <StatusCheckbox
+                    <StatusMarker
                       status={getStatus(todo)}
-                      size={16}
+                      size={12}
                       onPress={() => onToggleTodo(todo.id)}
                     />
                   </View>
@@ -221,7 +224,7 @@ export function MonthView({
 
         {!dayBlocks.length && !dayDue.length ? (
           <View className="items-center py-10">
-            <Text className="text-sm text-neutral-600">Nothing scheduled</Text>
+            <Text className="text-sm text-fg-muted">Nothing scheduled</Text>
           </View>
         ) : null}
       </ScrollView>

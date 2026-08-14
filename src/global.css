@@ -2,12 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-display:
-    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+/**
+ * Dooing semantic color tokens — see DESIGN.md §2.
+ *
+ * Descended from Tokyo Night (Night). The light theme is *authored*, not inverted:
+ * same hue angles, re-derived at light-appropriate lightness and chroma, on a
+ * background carrying the same faint blue-violet cast as #1a1b26.
+ *
+ * Values are space-separated RGB channels so Tailwind's `<alpha-value>` works
+ * (`bg-surface/50`). Components must only ever name a *semantic* token — never a
+ * raw hue, and never a stock Tailwind color.
+ *
+ * NOTE: these are mirrored in TS at src/constants/theme.ts for imperative APIs
+ * (navigation headers, StatusBar, SVG, lucide icons) that cannot read className.
+ * Change one, change the other.
+ */
+@layer base {
+  /* ── Day ─────────────────────────────────────────────────────────── */
+  :root {
+    --canvas: 245 245 248; /* #f5f5f8 */
+    --surface: 236 238 244; /* #eceef4 */
+    --elevated: 255 255 255; /* #ffffff */
+    --overlay: 230 232 239; /* #e6e8ef */
+
+    --fg: 42 44 61; /* #2a2c3d */
+    --fg-dim: 74 77 99; /* #4a4d63 */
+    --fg-muted: 118 123 145; /* #767b91 */
+    --fg-faint: 200 203 217; /* #c8cbd9 */
+
+    --line: 200 203 217; /* #c8cbd9 */
+    --line-strong: 118 123 145; /* #767b91 */
+
+    /* Reserved — never assigned to a category. See DESIGN.md §2. */
+    --accent: 59 95 196; /* #3b5fc4  time / today / active */
+    --danger: 184 57 90; /* #b8395a  overdue / important */
+    --warn: 143 100 16; /* #8f6410  urgent */
+    --ok: 76 122 40; /* #4c7a28  duration / success */
+
+    /* Category palette — paletteForTag draws only from these. */
+    --hue-cyan: 26 111 143; /* #1a6f8f */
+    --hue-teal: 15 122 102; /* #0f7a66 */
+    --hue-green: 76 122 40; /* #4c7a28 */
+    --hue-yellow: 143 100 16; /* #8f6410 */
+    --hue-orange: 184 92 30; /* #b85c1e */
+    --hue-magenta: 106 63 196; /* #6a3fc4 */
+  }
+
+  /* ── Night ───────────────────────────────────────────────────────── */
+  .dark:root {
+    --canvas: 26 27 38; /* #1a1b26 */
+    --surface: 31 32 48; /* #1f2030 */
+    --elevated: 36 40 59; /* #24283b */
+    --overlay: 22 22 30; /* #16161e */
+
+    --fg: 192 202 245; /* #c0caf5 */
+    --fg-dim: 169 177 214; /* #a9b1d6 */
+    --fg-muted: 86 95 137; /* #565f89 */
+    --fg-faint: 59 66 97; /* #3b4261 */
+
+    --line: 59 66 97; /* #3b4261 */
+    --line-strong: 86 95 137; /* #565f89 */
+
+    --accent: 122 162 247; /* #7aa2f7 */
+    --danger: 247 118 142; /* #f7768e */
+    --warn: 224 175 104; /* #e0af68 */
+    --ok: 158 206 106; /* #9ece6a */
+
+    --hue-cyan: 125 207 255; /* #7dcfff */
+    --hue-teal: 26 188 156; /* #1abc9c */
+    --hue-green: 158 206 106; /* #9ece6a */
+    --hue-yellow: 224 175 104; /* #e0af68 */
+    --hue-orange: 255 158 100; /* #ff9e64 */
+    --hue-magenta: 187 154 247; /* #bb9af7 */
+  }
 }

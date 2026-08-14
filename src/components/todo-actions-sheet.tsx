@@ -16,6 +16,8 @@ import {
 } from 'react';
 import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 
+import { useThemeColors } from '@/constants/theme';
+import { useSheetTheme } from './sheet-theme';
 import { useTodos } from '@/store/todos';
 
 export interface ActionTarget {
@@ -47,9 +49,9 @@ function ActionRow({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-center gap-3 rounded-xl px-3 py-3.5 active:bg-neutral-800">
+      className="flex-row items-center gap-3 rounded-xl px-3 py-3.5 active:bg-elevated">
       {icon}
-      <Text className={`text-base ${destructive ? 'text-red-400' : 'text-neutral-100'}`}>
+      <Text className={`text-base ${destructive ? 'text-danger' : 'text-fg'}`}>
         {label}
       </Text>
     </Pressable>
@@ -60,6 +62,8 @@ export const TodoActionsSheet = forwardRef<TodoActionsSheetRef, Props>(function 
   { onAddSubtask },
   ref
 ) {
+  const c = useThemeColors();
+  const sheet = useSheetTheme();
   const sheetRef = useRef<BottomSheetModal>(null);
   const remove = useTodos((s) => s.remove);
 
@@ -139,34 +143,34 @@ export const TodoActionsSheet = forwardRef<TodoActionsSheetRef, Props>(function 
       ref={sheetRef}
       enableDynamicSizing
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.background}
-      handleIndicatorStyle={styles.handle}
+      backgroundStyle={sheet.background}
+      handleIndicatorStyle={sheet.handle}
       onDismiss={handleDismiss}>
       <BottomSheetView style={styles.content}>
         {target ? (
           <Text
-            className="px-3 pb-1 text-sm text-neutral-500"
+            className="px-3 pb-1 text-sm text-fg-muted"
             numberOfLines={1}>
             {target.text}
           </Text>
         ) : null}
         <ActionRow
-          icon={<Plus size={20} color="#e5e5e5" strokeWidth={2} />}
+          icon={<Plus size={20} color={c.fg} strokeWidth={2} />}
           label="Add subtask"
           onPress={handleAddSubtask}
         />
         <ActionRow
-          icon={<CalendarClock size={19} color="#e5e5e5" strokeWidth={2} />}
+          icon={<CalendarClock size={19} color={c.fg} strokeWidth={2} />}
           label="Schedule…"
           onPress={handleSchedule}
         />
         <ActionRow
-          icon={<Pencil size={18} color="#e5e5e5" strokeWidth={2} />}
+          icon={<Pencil size={18} color={c.fg} strokeWidth={2} />}
           label="Edit"
           onPress={handleEdit}
         />
         <ActionRow
-          icon={<Trash2 size={18} color="#f87171" strokeWidth={2} />}
+          icon={<Trash2 size={18} color={c.danger} strokeWidth={2} />}
           label="Delete"
           destructive
           onPress={handleDelete}
@@ -177,7 +181,5 @@ export const TodoActionsSheet = forwardRef<TodoActionsSheetRef, Props>(function 
 });
 
 const styles = StyleSheet.create({
-  background: { backgroundColor: '#171717' },
-  handle: { backgroundColor: '#525252', width: 40 },
   content: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 36, gap: 2 },
 });
