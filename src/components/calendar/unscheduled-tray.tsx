@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, SharedValue } from 'react-native-reanimated';
 
-import { useThemeName } from '@/constants/theme';
+import { Type, useThemeName } from '@/constants/theme';
 import { paletteForTag } from '@/lib/block';
 import { extractCategory } from '@/lib/todo';
 import { Todo } from '@/types/todo';
@@ -65,9 +65,12 @@ function TrayChip({
     <GestureDetector gesture={gesture}>
       <View
         style={{ backgroundColor: palette.fill, borderColor: palette.border }}
-        className="max-w-[190px] flex-row items-center gap-1.5 rounded-full border py-2 pl-2.5 pr-3.5">
-        <View style={{ backgroundColor: palette.bar }} className="h-2 w-2 rounded-full" />
-        <Text numberOfLines={1} style={{ color: palette.text }} className="text-[13px]">
+        className="max-w-[190px] flex-row items-center overflow-hidden rounded-sm border py-1.5 pl-2.5 pr-3">
+        <View
+          style={{ backgroundColor: palette.bar }}
+          className="absolute bottom-0 left-0 top-0 w-0.5"
+        />
+        <Text numberOfLines={1} style={[Type.body, { color: palette.text, fontSize: 13 }]}>
           {todo.text}
         </Text>
       </View>
@@ -80,9 +83,14 @@ export function UnscheduledTray({ todos, ...handlers }: TrayProps) {
 
   return (
     <View className="border-t border-line bg-canvas pb-1 pt-2">
-      <Text className="px-4 pb-1.5 text-[10px] uppercase tracking-wide text-fg-muted">
-        Unscheduled · hold to drag onto the grid
-      </Text>
+      <View className="flex-row items-baseline justify-between px-4 pb-1.5">
+        <Text style={Type.section} className="text-fg-muted">
+          unscheduled
+        </Text>
+        <Text style={Type.status} className="text-fg-faint">
+          hold to drag · {todos.length}
+        </Text>
+      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

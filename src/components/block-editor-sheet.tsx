@@ -4,7 +4,7 @@ import {
   BottomSheetModal,
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
-import { ChevronLeft, ChevronRight, Link2, Trash2 } from 'lucide-react-native';
+import { Link2, Trash2 } from 'lucide-react-native';
 import { forwardRef, ReactNode, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,7 +17,7 @@ import {
   longDateLabel,
   todayKey,
 } from '@/lib/date';
-import { useThemeColors } from '@/constants/theme';
+import { Type, useThemeColors } from '@/constants/theme';
 import { useSheetTheme } from './sheet-theme';
 import { useBlocks } from '@/store/blocks';
 import { Block, Recurrence, RecurrenceType } from '@/types/block';
@@ -55,7 +55,7 @@ interface Props {
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <Text className="mt-1 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+    <Text style={Type.section} className="mt-1 text-fg-muted">
       {children}
     </Text>
   );
@@ -72,24 +72,33 @@ function Stepper({
   onUp: () => void;
   sub?: string;
 }) {
-  const c = useThemeColors();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-canvas p-1">
+    <View className="flex-row items-center rounded-sm border border-line bg-canvas p-1">
       <Pressable
         onPress={onDown}
-        hitSlop={6}
-        className="h-9 w-9 items-center justify-center rounded-lg active:bg-elevated">
-        <ChevronLeft size={18} color={c.fgMuted} />
+        hitSlop={8}
+        className="h-9 w-8 items-center justify-center rounded-sm active:bg-elevated">
+        <Text style={Type.meta} className="text-fg-muted">
+          ←
+        </Text>
       </Pressable>
       <View className="min-w-[92px] items-center">
-        <Text className="text-base font-semibold tabular-nums text-fg">{value}</Text>
-        {sub ? <Text className="text-[10px] text-fg-muted">{sub}</Text> : null}
+        <Text style={[Type.count, { fontSize: 14, lineHeight: 18 }]} className="text-fg">
+          {value}
+        </Text>
+        {sub ? (
+          <Text style={Type.status} className="text-fg-muted">
+            {sub}
+          </Text>
+        ) : null}
       </View>
       <Pressable
         onPress={onUp}
-        hitSlop={6}
-        className="h-9 w-9 items-center justify-center rounded-lg active:bg-elevated">
-        <ChevronRight size={18} color={c.fgMuted} />
+        hitSlop={8}
+        className="h-9 w-8 items-center justify-center rounded-sm active:bg-elevated">
+        <Text style={Type.meta} className="text-fg-muted">
+          →
+        </Text>
       </Pressable>
     </View>
   );
@@ -104,13 +113,11 @@ function Chip({
   active: boolean;
   onPress: () => void;
 }) {
+  // Brackets mark the selection, as everywhere else — no filled pill.
   return (
-    <Pressable
-      onPress={onPress}
-      className={`rounded-full px-3.5 py-2 ${active ? 'bg-accent' : 'bg-elevated'}`}>
-      <Text
-        className={`text-[13px] ${active ? 'font-semibold text-canvas' : 'text-fg'}`}>
-        {label}
+    <Pressable onPress={onPress} hitSlop={6} className="py-1 active:opacity-60">
+      <Text style={Type.meta} className={active ? 'text-accent' : 'text-fg-muted'}>
+        {active ? `[${label}]` : ` ${label} `}
       </Text>
     </Pressable>
   );
@@ -262,7 +269,7 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           onChangeText={setTitle}
           placeholder="What are you working on?  (use #tags)"
           placeholderTextColor={sheet.placeholder}
-          style={styles.titleInput}
+          style={[styles.titleInput, sheet.input]}
           returnKeyType="done"
         />
 
@@ -276,8 +283,11 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           {date !== todayKey() ? (
             <Pressable
               onPress={() => setDate(todayKey())}
-              className="rounded-full bg-elevated px-3 py-2 active:opacity-70">
-              <Text className="text-[13px] text-fg">Today</Text>
+              hitSlop={8}
+              className="active:opacity-60">
+              <Text style={Type.meta} className="text-accent">
+                [today]
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -319,11 +329,10 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
                 <Pressable
                   key={day}
                   onPress={() => toggleDay(day)}
-                  className={`h-10 flex-1 items-center justify-center rounded-full ${
-                    on ? 'bg-accent' : 'bg-elevated'
+                  className={`h-10 flex-1 items-center justify-center rounded-sm border ${
+                    on ? 'border-accent bg-accent/15' : 'border-line'
                   }`}>
-                  <Text
-                    className={`text-[13px] ${on ? 'font-bold text-canvas' : 'text-fg-dim'}`}>
+                  <Text style={Type.meta} className={on ? 'text-accent' : 'text-fg-muted'}>
                     {label}
                   </Text>
                 </Pressable>
@@ -352,7 +361,7 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
               placeholderTextColor={sheet.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
-              style={[styles.input, !untilValid && sheet.invalid]}
+              style={[styles.input, sheet.input, !untilValid && sheet.invalid]}
             />
           </>
         ) : null}
@@ -364,18 +373,17 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
           multiline
           placeholder="Optional notes…"
           placeholderTextColor={sheet.placeholder}
-          style={styles.notesInput}
+          style={[styles.notesInput, sheet.input]}
         />
 
         <Pressable
           onPress={submit}
           disabled={!canSubmit}
-          className={`mt-2 items-center rounded-xl py-3.5 ${
+          className={`mt-2 items-center rounded-sm py-3.5 ${
             canSubmit ? 'bg-accent active:opacity-80' : 'bg-elevated'
           }`}>
-          <Text
-            className={`text-base font-semibold ${canSubmit ? 'text-canvas' : 'text-fg-muted'}`}>
-            {editing ? 'Save block' : 'Add block'}
+          <Text style={Type.meta} className={canSubmit ? 'text-canvas' : 'text-fg-muted'}>
+            {editing ? '[save block]' : '[add block]'}
           </Text>
         </Pressable>
       </BottomSheetKeyboardAwareScrollView>
@@ -386,19 +394,19 @@ export const BlockEditorSheet = forwardRef<BlockEditorSheetRef, Props>(function 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 36, gap: 10 },
   titleInput: {
-    borderRadius: 10,
+    borderRadius: 3,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
   },
   input: {
-    borderRadius: 10,
+    borderRadius: 3,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
   },
   notesInput: {
-    borderRadius: 10,
+    borderRadius: 3,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,

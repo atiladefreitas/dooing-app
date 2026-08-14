@@ -246,68 +246,104 @@ export function paletteForBlock(block: Block, theme: ThemeName): BlockPalette {
 
 export interface PositionedBlock {
   block: Block;
-  /** Cascade depth in its overlap cluster. 0 = earliest, leftmost, furthest back. */
-  depth: number;
-  /** Blocks in this cluster past the depth cap. Non-zero only on the topmost block. */
-  overflow: number;
-  /** Blocks in the cluster; 1 means no conflict. */
-  clusterSize: number;
+  /** Lane within its overlap cluster. Lanes never overlap, so hit areas never do. */
+  column: number;
+  /** Lanes the cluster occupies, for width. 1 means no conflict — full width. */
+  columns: number;
 }
 
-/** Hard ceiling on cascade levels; the real cap is width-aware, see below. */
-export const MAX_CASCADE_DEPTH = 3;
-
-/** Frontmost block never shrinks below this fraction of its column. */
-const MIN_FRONT_WIDTH_RATIO = 0.55;
-
-/**
- * Horizontal indent per cascade level — DESIGN.md §4.5. Scales with column width
- * so a 7-day week stays legible without wasting space in a single-day view.
- */
-export function cascadeStep(colWidth: number): number {
-  return Math.min(Math.max(colWidth * 0.13, 8), 22);
+/** Blocks a cluster could not fit on screen, surfaced as a tappable `+n`. */
+export interface OverflowMarker {
+  key: string;
+  startMin: number;
+  count: number;
 }
 
+export interface DayLayout {
+  positioned: PositionedBlock[];
+  overflow: OverflowMarker[];
+}
+
+/** Narrowest lane we will render. Below this a block stops being a usable target. */
+const MIN_BLOCK_WIDTH = 36;
+const MAX_COLUMNS = 4;
+
+/** Inset on each side of a day column, and the gap between adjacent lanes. */
+export const COLUMN_PAD = 2;
+export const BLOCK_GAP = 2;
+
 /**
- * Deepest cascade level a column can actually afford.
+ * Lanes a column can afford.
  *
- * A fixed cap of 4 levels reproduces the very bug the cascade replaces: on a
- * 7-day week (colWidth ≈ 49pt) depth 3 leaves the FRONTMOST block just 19pt wide.
- * Since indent comes off the width, the cap has to shrink with the column so the
- * block on top always stays readable. Wide views still get all 4 levels.
+ * The gap between lanes has to be part of this sum: dividing only by
+ * MIN_BLOCK_WIDTH allowed 3 lanes in a 113pt week column, which after the gap
+ * left 34pt each — under the very floor this is meant to enforce.
+ *
+ * At least 2, so a conflict always renders as a conflict rather than
+ * immediately collapsing into a `+n`.
  */
-export function maxCascadeDepth(colWidth: number): number {
-  const affordable = Math.floor((colWidth * (1 - MIN_FRONT_WIDTH_RATIO)) / cascadeStep(colWidth));
-  return Math.max(1, Math.min(MAX_CASCADE_DEPTH, affordable));
+export function maxBlockColumns(colWidth: number): number {
+  const usable = colWidth - COLUMN_PAD * 2;
+  return Math.max(
+    2,
+    Math.min(MAX_COLUMNS, Math.floor(usable / (MIN_BLOCK_WIDTH + BLOCK_GAP)))
+  );
 }
 
-/** `colWidth` decides how many cascade levels fit; see maxCascadeDepth. */
-export function layoutOverlaps(blocks: Block[], colWidth: number): PositionedBlock[] {
-  const maxDepth = maxCascadeDepth(colWidth);
+/**
+ * Lay out a day's blocks into non-overlapping lanes — DESIGN.md §4.5.
+ *
+ * Lanes, NOT a cascade. A cascade (blocks stepped right, sharing a right edge,
+ * later ones drawn on top) looked fine but was unusable: the block underneath
+ * was only touchable in the 12–22pt strip its neighbour did not cover, far below
+ * the 44pt minimum, and identical time ranges hid it completely. Lanes cannot
+ * overlap by construction, so every block on screen is fully tappable.
+ *
+ * Greedy interval packing: a lane is reused as soon as its previous block ends,
+ * so three blocks that merely chain (9–10, 10–11, 11–12) still share one lane
+ * and stay full width.
+ */
+export function layoutOverlaps(blocks: Block[], colWidth: number): DayLayout {
+  const maxCols = maxBlockColumns(colWidth);
   const sorted = blocks
     .slice()
     .sort((a, b) => a.start_min - b.start_min || b.duration_min - a.duration_min);
 
-  const out: PositionedBlock[] = [];
+  const positioned: PositionedBlock[] = [];
+  const overflow: OverflowMarker[] = [];
   let cluster: Block[] = [];
   let clusterEnd = -1;
 
   const flush = () => {
     if (!cluster.length) return;
-    // Cascade, not column-packing: dividing the column by cluster size produced
-    // ~15pt slivers at three conflicts on a 7-day week, where NO block was
-    // readable. Stepping them right keeps the frontmost fully legible and the
-    // rest identifiable. See DESIGN.md §4.5.
-    const overflow = Math.max(0, cluster.length - (maxDepth + 1));
-    cluster.forEach((block, i) => {
-      out.push({
-        block,
-        depth: Math.min(i, maxDepth),
-        clusterSize: cluster.length,
-        // Only the frontmost block carries the "+n" badge for the whole cluster.
-        overflow: i === cluster.length - 1 ? overflow : 0,
-      });
+
+    const laneEnds: number[] = [];
+    const assigned = cluster.map((block) => {
+      let column = laneEnds.findIndex((end) => end <= block.start_min);
+      if (column === -1) {
+        column = laneEnds.length;
+        laneEnds.push(0);
+      }
+      laneEnds[column] = endMin(block);
+      return { block, column };
     });
+
+    const columns = Math.min(laneEnds.length, maxCols);
+    const hidden = assigned.filter((a) => a.column >= maxCols);
+
+    for (const a of assigned) {
+      if (a.column < maxCols) positioned.push({ ...a, columns });
+    }
+
+    // Never drop blocks silently — say how many and let the user open the day.
+    if (hidden.length) {
+      overflow.push({
+        key: `overflow-${cluster[0].id}`,
+        startMin: Math.min(...hidden.map((h) => h.block.start_min)),
+        count: hidden.length,
+      });
+    }
+
     cluster = [];
     clusterEnd = -1;
   };
@@ -319,7 +355,7 @@ export function layoutOverlaps(blocks: Block[], colWidth: number): PositionedBlo
   }
   flush();
 
-  return out;
+  return { positioned, overflow };
 }
 
 export function totalMinutes(blocks: Block[]): number {

@@ -79,10 +79,10 @@ export default function HomeScreen() {
 
   // rowsForDisplay carries tree-guide ancestry and child counts, so the screen no
   // longer needs its own child-count pass.
-  const data = useMemo(() => {
-    const rows = rowsForDisplay(todos, collapsedSet);
-    return toListItems(buildSections(rows, todos, scheduled, todayKey()));
-  }, [todos, collapsedSet, scheduled]);
+  const data = useMemo(
+    () => toListItems(buildSections(rowsForDisplay(todos, collapsedSet))),
+    [todos, collapsedSet],
+  );
 
   // A lone TODAY header with nothing under it is the empty state, not content.
   const isEmpty = todos.length === 0;
@@ -100,8 +100,7 @@ export default function HomeScreen() {
           item.kind === "section" ? (
             <SectionHeader
               section={item.key}
-              done={item.done}
-              total={item.total}
+              count={item.count}
               first={item.first}
             />
           ) : (

@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -11,7 +11,7 @@ import { GridView } from '@/components/calendar/grid-view';
 import { MonthView } from '@/components/calendar/month-view';
 import { TimeGridHandle } from '@/components/calendar/time-grid';
 import { UnscheduledTray } from '@/components/calendar/unscheduled-tray';
-import { useThemeColors, useThemeName } from '@/constants/theme';
+import { Type, useThemeColors, useThemeName } from '@/constants/theme';
 import { blocksByDate, GRANULARITY, paletteForTag } from '@/lib/block';
 import {
   addDays,
@@ -31,9 +31,9 @@ import { Block, CalendarView } from '@/types/block';
 import { Todo } from '@/types/todo';
 
 const VIEWS: { label: string; value: CalendarView }[] = [
-  { label: 'Day', value: 'day' },
-  { label: 'Week', value: 'week' },
-  { label: 'Month', value: 'month' },
+  { label: 'day', value: 'day' },
+  { label: 'week', value: 'week' },
+  { label: 'month', value: 'month' },
 ];
 
 const WEEK_SPAN = 3;
@@ -240,43 +240,45 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-canvas">
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-1">
-        <Text className="text-lg font-semibold text-fg">{title}</Text>
-        <View className="flex-row items-center gap-1">
+      <View className="flex-row items-baseline justify-between px-4 pb-2 pt-1">
+        <Text style={Type.section} className="text-fg">
+          {title}
+        </Text>
+        <View className="flex-row items-center gap-3">
           {!isToday ? (
-            <Pressable
-              onPress={goToday}
-              hitSlop={6}
-              className="mr-1 rounded-full bg-elevated px-3 py-1.5 active:opacity-70">
-              <Text className="text-xs font-medium text-fg">Today</Text>
+            <Pressable onPress={goToday} hitSlop={8} className="active:opacity-60">
+              <Text style={Type.meta} className="text-accent">
+                [today]
+              </Text>
             </Pressable>
           ) : null}
-          <Pressable
-            onPress={() => shift(-1)}
-            hitSlop={8}
-            className="h-8 w-8 items-center justify-center rounded-full active:bg-elevated">
-            <ChevronLeft size={20} color={c.fgDim} />
+          {/* Mono arrows rather than icons — same voice as the `→` in the sync log. */}
+          <Pressable onPress={() => shift(-1)} hitSlop={12} className="active:opacity-60">
+            <Text style={Type.meta} className="text-fg-dim">
+              ←
+            </Text>
           </Pressable>
-          <Pressable
-            onPress={() => shift(1)}
-            hitSlop={8}
-            className="h-8 w-8 items-center justify-center rounded-full active:bg-elevated">
-            <ChevronRight size={20} color={c.fgDim} />
+          <Pressable onPress={() => shift(1)} hitSlop={12} className="active:opacity-60">
+            <Text style={Type.meta} className="text-fg-dim">
+              →
+            </Text>
           </Pressable>
         </View>
       </View>
 
-      <View className="mx-4 mb-2 flex-row rounded-lg bg-surface p-1">
+      {/* Bracket marks the active view, exactly as it marks the active tab. Inactive
+          labels pad with spaces so the mono row never shifts width. */}
+      <View className="mb-2 flex-row gap-4 border-y border-line px-4 py-2">
         {VIEWS.map((v) => {
           const active = view === v.value;
           return (
             <Pressable
               key={v.value}
               onPress={() => setView(v.value)}
-              className={`flex-1 items-center rounded-md py-1.5 ${active ? 'bg-elevated' : ''}`}>
-              <Text
-                className={`text-[13px] ${active ? 'font-semibold text-fg' : 'text-fg-dim'}`}>
-                {v.label}
+              hitSlop={8}
+              className="active:opacity-60">
+              <Text style={Type.meta} className={active ? 'text-accent' : 'text-fg-muted'}>
+                {active ? `[${v.label}]` : ` ${v.label} `}
               </Text>
             </Pressable>
           );
@@ -341,13 +343,22 @@ export default function CalendarScreen() {
             overlayStyle,
           ]}>
           <View
-            style={{ backgroundColor: dragPalette.bar }}
-            className="rounded-lg px-3 py-2 shadow-lg">
-            <Text numberOfLines={1} className="text-[12px] font-semibold text-canvas">
+            style={{ backgroundColor: dragPalette.fill, borderColor: dragPalette.bar }}
+            className="rounded-sm border px-2 py-1.5">
+            <View
+              style={{ backgroundColor: dragPalette.bar }}
+              className="absolute bottom-0 left-0 top-0 w-0.5"
+            />
+            <Text
+              numberOfLines={1}
+              style={[Type.meta, { color: dragPalette.text }]}
+              className="pl-1.5">
               {dragging.text}
             </Text>
             {dropHint ? (
-              <Text className="text-[10px] text-canvas">{dropHint}</Text>
+              <Text style={[Type.status, { color: dragPalette.dim }]} className="pl-1.5">
+                {dropHint}
+              </Text>
             ) : null}
           </View>
         </Animated.View>
@@ -364,7 +375,7 @@ export default function CalendarScreen() {
         }
         accessibilityLabel="Add time block"
         style={{ elevation: 8 }}
-        className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg shadow-blue-500/40 active:opacity-80">
+        className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:opacity-80">
         <Plus size={26} color={c.canvas} strokeWidth={2.5} />
       </Pressable>
 

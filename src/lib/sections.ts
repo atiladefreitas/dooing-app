@@ -1,167 +1,75 @@
-import { daysBetween, keyFromSeconds } from './date';
-import { ScheduledAt } from './schedule';
-import { DisplayRow } from './todo';
-import { Todo } from '@/types/todo';
+import { DisplayRow, getStatus } from './todo';
+import { TodoStatus } from '@/types/todo';
 
 /**
- * Date sections for the todo list — DESIGN.md §4.4.
+ * Status sections for the todo list — DESIGN.md §4.4.
  *
- * Grouping is by ROOT, never per todo: a root carries its whole subtree into
- * whichever section it lands in. Bucketing each todo independently would scatter
- * a tree across several sections and destroy the guides.
+ * Mirrors the Neovim plugin's modern style (`ui/modern.lua`): IN PROGRESS →
+ * PENDING → DONE, in that order, empty sections omitted. Date buckets
+ * (overdue/today/this week/…) were tried first and read as confusing — a todo's
+ * date is already on its meta line, and the status line reports overdue counts,
+ * so bucketing by date said nothing the row didn't already say.
+ *
+ * `SectionKey` IS `TodoStatus`, so the two can never drift apart.
  */
 
-export type SectionKey = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'someday';
+export type SectionKey = TodoStatus;
 
-export const SECTION_ORDER: readonly SectionKey[] = [
-  'overdue',
-  'today',
-  'tomorrow',
-  'week',
-  'later',
-  'someday',
-] as const;
+export const SECTION_ORDER: readonly SectionKey[] = ['in_progress', 'pending', 'done'] as const;
 
 /** Rendered uppercase by Type.section. */
 export const SECTION_LABEL: Record<SectionKey, string> = {
-  overdue: 'overdue',
-  today: 'today',
-  tomorrow: 'tomorrow',
-  week: 'this week',
-  later: 'later',
-  someday: 'someday',
+  in_progress: 'in progress',
+  pending: 'pending',
+  done: 'done',
 };
-
-const RANK: Record<SectionKey, number> = SECTION_ORDER.reduce(
-  (acc, key, i) => ({ ...acc, [key]: i }),
-  {} as Record<SectionKey, number>
-);
-
-function bucketForDate(date: string, today: string): SectionKey {
-  if (date < today) return 'overdue';
-  if (date === today) return 'today';
-  const ahead = daysBetween(today, date);
-  if (ahead === 1) return 'tomorrow';
-  if (ahead <= 7) return 'week';
-  return 'later';
-}
-
-/**
- * A todo's own bucket: due date first, then its next scheduled block, else undated.
- *
- * A completed todo is never "overdue" — it is history, not a problem — so a done
- * todo with a past date settles into `today` instead.
- */
-function bucketForTodo(
-  todo: Todo,
-  scheduled: Record<string, ScheduledAt>,
-  today: string
-): SectionKey {
-  const date =
-    todo.due_at != null ? keyFromSeconds(todo.due_at) : scheduled[todo.id]?.date;
-  if (!date) return 'someday';
-
-  const bucket = bucketForDate(date, today);
-  return bucket === 'overdue' && todo.done ? 'today' : bucket;
-}
 
 export interface Section {
   key: SectionKey;
   rows: DisplayRow[];
-  done: number;
-  total: number;
+  /** Top-level todos in this section, matching the plugin's per-group count. */
+  count: number;
 }
 
 export type ListItem =
-  | { kind: 'section'; key: SectionKey; done: number; total: number; first: boolean }
+  | { kind: 'section'; key: SectionKey; count: number; first: boolean }
   | { kind: 'row'; row: DisplayRow };
 
 /**
- * Bucket display rows into sections, preserving tree order within each.
+ * Bucket display rows by status, preserving tree order within each section.
  *
- * A root takes the EARLIEST bucket found anywhere in its subtree, so a project
- * surfaces under TODAY when one of its subtasks is due today. Subtree stats come
- * from the full todo list rather than the visible rows, so collapsing a branch
- * never moves its parent to a different section.
+ * Only a ROOT's status decides where its subtree lands — an in-progress parent
+ * keeps its pending children with it. Sectioning each todo independently would
+ * scatter one tree across three sections and destroy the guides.
  */
-export function buildSections(
-  rows: DisplayRow[],
-  todos: Todo[],
-  scheduled: Record<string, ScheduledAt>,
-  today: string
-): Section[] {
-  const ids = new Set(todos.map((t) => t.id));
-  const byParent = new Map<string, Todo[]>();
-  for (const t of todos) {
-    if (t.parent_id == null || !ids.has(t.parent_id)) continue;
-    const list = byParent.get(t.parent_id);
-    if (list) list.push(t);
-    else byParent.set(t.parent_id, [t]);
-  }
-
-  const subtreeOf = (root: Todo): Todo[] => {
-    const out = [root];
-    const stack = [root.id];
-    while (stack.length) {
-      for (const child of byParent.get(stack.pop()!) ?? []) {
-        out.push(child);
-        stack.push(child.id);
-      }
-    }
-    return out;
-  };
-
+export function buildSections(rows: DisplayRow[]): Section[] {
   const sections = new Map<SectionKey, Section>();
-  const push = (key: SectionKey, group: DisplayRow[], subtree: Todo[]) => {
-    const section =
-      sections.get(key) ?? { key, rows: [], done: 0, total: 0 };
-    section.rows.push(...group);
-    section.total += subtree.length;
-    section.done += subtree.filter((t) => t.done).length;
-    sections.set(key, section);
-  };
 
-  // Rows arrive in tree order, so a root (depth 0) starts a new group and every
-  // row after it belongs to that root until the next depth-0 row.
-  let group: DisplayRow[] = [];
-  let root: Todo | null = null;
-
-  const flush = () => {
-    if (!root) return;
-    const subtree = subtreeOf(root);
-    const key = subtree
-      .map((t) => bucketForTodo(t, scheduled, today))
-      .reduce((best, k) => (RANK[k] < RANK[best] ? k : best), 'someday' as SectionKey);
-    push(key, group, subtree);
-    group = [];
-    root = null;
-  };
+  let current: Section | null = null;
 
   for (const row of rows) {
+    // Rows arrive in tree order, so a depth-0 row starts a new subtree and every
+    // row after it belongs to that root until the next depth-0 row.
     if (row.guides.length === 0) {
-      flush();
-      root = row.todo;
+      const key = getStatus(row.todo);
+      const section = sections.get(key) ?? { key, rows: [], count: 0 };
+      section.count += 1;
+      sections.set(key, section);
+      current = section;
     }
-    group.push(row);
+    current?.rows.push(row);
   }
-  flush();
 
-  // TODAY is the anchor and always shows, even when empty.
-  return SECTION_ORDER.map(
-    (key) => sections.get(key) ?? { key, rows: [], done: 0, total: 0 }
-  ).filter((s) => s.rows.length > 0 || s.key === 'today');
+  // Empty sections are omitted entirely, as in the plugin.
+  return SECTION_ORDER.map((key) => sections.get(key)).filter(
+    (s): s is Section => s != null && s.rows.length > 0
+  );
 }
 
 /** Flatten sections into a single FlatList feed of headers and rows. */
 export function toListItems(sections: Section[]): ListItem[] {
   return sections.flatMap((section, i) => [
-    {
-      kind: 'section' as const,
-      key: section.key,
-      done: section.done,
-      total: section.total,
-      first: i === 0,
-    },
+    { kind: 'section' as const, key: section.key, count: section.count, first: i === 0 },
     ...section.rows.map((row) => ({ kind: 'row' as const, row })),
   ]);
 }

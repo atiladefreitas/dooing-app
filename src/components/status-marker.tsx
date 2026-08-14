@@ -20,6 +20,17 @@ const GLYPH: Record<TodoStatus, string> = {
   done: "[x]",
 };
 
+/**
+ * Bracket-free form for dense surfaces — inside a calendar block a 3-character
+ * cell eats width the block does not have, and the brackets crowd the title.
+ * The block's own bar and fill already provide the container the brackets would.
+ */
+const GLYPH_COMPACT: Record<TodoStatus, string> = {
+  pending: "·",
+  in_progress: "▸",
+  done: "✓",
+};
+
 /** Active beats priority: blue means "in progress" and must not be ambiguous. */
 function colorClass(status: TodoStatus, priorities: string[] | null | undefined): string {
   if (status === "done") return "text-fg-faint";
@@ -35,9 +46,17 @@ interface Props {
   priorities?: string[] | null;
   /** Font size of the glyph. The cell scales with it. */
   size?: number;
+  /** Drop the brackets for tight surfaces like calendar blocks. */
+  compact?: boolean;
 }
 
-export function StatusMarker({ status, onPress, priorities, size = 14 }: Props) {
+export function StatusMarker({
+  status,
+  onPress,
+  priorities,
+  size = 14,
+  compact = false,
+}: Props) {
   return (
     <Pressable
       hitSlop={12}
@@ -51,11 +70,11 @@ export function StatusMarker({ status, onPress, priorities, size = 14 }: Props) 
           fontFamily: Font.monoMedium,
           fontSize: size,
           lineHeight: Math.round(size * 1.45),
-          minWidth: Math.round(size * 1.95),
+          minWidth: Math.round(size * (compact ? 0.9 : 1.95)),
           textAlign: "center",
         }}
         className={colorClass(status, priorities)}>
-        {GLYPH[status]}
+        {(compact ? GLYPH_COMPACT : GLYPH)[status]}
       </Text>
     </Pressable>
   );

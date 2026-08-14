@@ -1,7 +1,7 @@
 import { forwardRef, useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { useThemeName } from '@/constants/theme';
+import { Font, Type, useThemeName } from '@/constants/theme';
 import { paletteForTag } from '@/lib/block';
 import { dayOfMonth, todayKey, weekdayShort } from '@/lib/date';
 import { dueTodosOn } from '@/lib/schedule';
@@ -32,12 +32,19 @@ function DueChip({ todo, onPress }: { todo: Todo; onPress: () => void }) {
     <Pressable
       onPress={onPress}
       style={{ backgroundColor: palette.fill, borderColor: palette.border }}
-      className="flex-row items-center gap-1 rounded border px-1.5 py-0.5 active:opacity-70">
-      <View style={{ backgroundColor: palette.bar }} className="h-1.5 w-1.5 rounded-full" />
+      className="flex-row items-center overflow-hidden rounded-sm border py-0.5 pl-2 pr-1 active:opacity-70">
+      <View
+        style={{ backgroundColor: palette.bar }}
+        className="absolute bottom-0 left-0 top-0 w-0.5"
+      />
       <Text
         numberOfLines={1}
-        style={{ color: todo.done ? palette.muted : palette.text }}
-        className={`flex-1 text-[10px] leading-[13px] ${todo.done ? 'line-through' : ''}`}>
+        style={{
+          ...Type.status,
+          fontFamily: Font.sans,
+          color: todo.done ? palette.muted : palette.text,
+        }}
+        className={`flex-1 ${todo.done ? 'line-through' : ''}`}>
         {todo.text}
       </Text>
     </Pressable>
@@ -83,22 +90,17 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
               onPress={() => onSelectDay(date)}
               className="flex-1 items-center py-2 active:opacity-60">
               <Text
-                className={`text-[10px] uppercase tracking-wide ${
-                  isToday ? 'text-accent' : 'text-fg-muted'
-                }`}>
-                {weekdayShort(date)}
+                style={Type.status}
+                className={isToday ? 'text-accent' : 'text-fg-muted'}>
+                {weekdayShort(date).toUpperCase()}
               </Text>
-              <View
-                className={`mt-0.5 h-7 w-7 items-center justify-center rounded-full ${
-                  isToday ? 'bg-accent' : ''
-                }`}>
-                <Text
-                  className={`text-[15px] tabular-nums ${
-                    isToday ? 'font-bold text-canvas' : 'text-fg'
-                  }`}>
-                  {dayOfMonth(date)}
-                </Text>
-              </View>
+              {/* `[13]` marks today. Other days pad with spaces so the mono
+                  column keeps its width and the row never shifts. */}
+              <Text
+                style={[Type.count, { fontSize: 14, lineHeight: 20 }]}
+                className={isToday ? 'text-accent' : 'text-fg'}>
+                {isToday ? `[${dayOfMonth(date)}]` : ` ${dayOfMonth(date)} `}
+              </Text>
             </Pressable>
           );
         })}
@@ -107,7 +109,7 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
       {hasDue ? (
         <View className="flex-row border-b border-line bg-canvas">
           <View style={{ width: GUTTER_W }} className="justify-center pr-2">
-            <Text className="text-right text-[9px] uppercase tracking-wide text-fg-muted">
+            <Text style={Type.section} className="text-right text-fg-muted">
               due
             </Text>
           </View>
@@ -136,6 +138,7 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
         onMoveBlock={onMoveBlock}
         onResizeBlock={onResizeBlock}
         onToggleTodo={onToggleTodo}
+        onShowMore={onSelectDay}
         compact={compact}
       />
     </View>

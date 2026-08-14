@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { LayoutChangeEvent, ScrollView, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, ScrollView, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -19,12 +19,11 @@ import {
   GRANULARITY,
   MIN_DURATION,
   PositionedBlock,
-  cascadeStep,
   layoutOverlaps,
   paletteForBlock,
   stripTags,
 } from '@/lib/block';
-import { Type, useThemeName } from '@/constants/theme';
+import { Font, Type, useThemeName } from '@/constants/theme';
 import { formatMinutes, minutesNow, todayKey } from '@/lib/date';
 import { getStatus } from '@/lib/todo';
 import { Block } from '@/types/block';
@@ -58,6 +57,8 @@ interface TimeGridProps {
   onMoveBlock: (block: Block, date: string, startMin: number) => void;
   onResizeBlock: (block: Block, durationMin: number) => void;
   onToggleTodo: (todoId: string) => void;
+  /** Open a single day — used by the `+n` overflow marker. */
+  onShowMore?: (date: string) => void;
   compact?: boolean;
 }
 
@@ -90,8 +91,8 @@ function Gutter() {
       {HOURS.map((h) => (
         <Text
           key={h}
-          style={{ top: h * HOUR_HEIGHT - 7 }}
-          className="absolute right-2 text-[11px] tabular-nums text-fg-muted">
+          style={[Type.status, { position: 'absolute', top: h * HOUR_HEIGHT - 7 }]}
+          className="right-2 text-fg-muted">
           {h === 0 ? '' : formatMinutes(h * 60)}
         </Text>
       ))}
@@ -130,7 +131,7 @@ function GridBlock({
   setScrollEnabled,
   setHint,
 }: GridBlockProps) {
-  const { block, depth, overflow } = item;
+  const { block, column, columns } = item;
   const theme = useThemeName();
   const palette = paletteForBlock(block, theme);
 
@@ -140,12 +141,9 @@ function GridBlock({
   const active = useSharedValue(0);
   const lastStep = useSharedValue(0);
 
-  // Cascade: every block keeps the same right edge and steps in from the left, so
-  // the frontmost is fully readable and those behind still show their colour bar
-  // and the start of their label.
-  const indent = depth * cascadeStep(colWidth);
-  const slotWidth = colWidth - 4 - indent;
-  const left = dayIndex * colWidth + 2 + indent;
+  // Lanes never overlap, so every block keeps its own hit area.
+  const slotWidth = (colWidth - 4) / columns;
+  const left = dayIndex * colWidth + 2 + column * slotWidth;
   const top = (block.start_min / 60) * HOUR_HEIGHT;
   const height = Math.max((block.duration_min / 60) * HOUR_HEIGHT, 22);
 
@@ -295,8 +293,7 @@ function GridBlock({
     transform: [{ translateX: translateX.get() }, { translateY: translateY.get() }],
     height: Math.max(height + extraHeight.get(), 22),
     borderColor: active.get() ? palette.bar : palette.border,
-    // Deeper in the cascade means later start, drawn on top.
-    zIndex: active.get() ? 50 : 1 + depth,
+    zIndex: active.get() ? 50 : 1,
     elevation: active.get() ? 12 : 0,
   }));
 
@@ -317,42 +314,37 @@ function GridBlock({
           },
           animatedStyle,
         ]}
-        className="overflow-hidden rounded-md border">
+        className="overflow-hidden rounded-sm border">
         <View
           style={{ backgroundColor: palette.bar }}
-          className="absolute top-0 bottom-0 left-0 w-1"
+          className="absolute top-0 bottom-0 left-0 w-0.5"
         />
-        {/* Blocks past the cascade cap are stacked, not dropped — say how many. */}
-        {overflow > 0 ? (
-          <Text
-            style={{ ...Type.status, color: palette.text }}
-            className="absolute right-1 top-0.5">
-            +{overflow}
-          </Text>
-        ) : null}
         <View className="flex-row flex-1 gap-1 items-start px-1.5 py-1 pl-2.5">
           {todo ? (
             <View className="pt-px">
               <StatusMarker
                 status={status ?? 'pending'}
-                size={11}
+                size={12}
+                compact
                 onPress={() => onToggleTodo(todo.id)}
               />
             </View>
           ) : null}
           <View className="flex-1">
+            {/* Title is the human talking (sans); the time is the machine (mono). */}
             <Text
               numberOfLines={tall ? 2 : 1}
-              style={{ color: todo?.done ? palette.muted : palette.text }}
-              className={`text-[11px] font-medium leading-[14px] ${
-                todo?.done ? 'line-through' : ''
-              }`}>
+              style={{
+                fontFamily: Font.sans,
+                fontSize: 11,
+                lineHeight: 14,
+                color: todo?.done ? palette.muted : palette.text,
+              }}
+              className={todo?.done ? 'line-through' : ''}>
               {label}
             </Text>
             {tall && !compact ? (
-              <Text
-                style={{ color: palette.dim }}
-                className="text-[10px] tabular-nums leading-[13px]">
+              <Text style={[Type.status, { color: palette.dim }]}>
                 {formatMinutes(block.start_min)}
               </Text>
             ) : null}
@@ -360,10 +352,7 @@ function GridBlock({
         </View>
         <GestureDetector gesture={resizePan}>
           <View className="absolute right-0 bottom-0 left-0 justify-end items-center h-4">
-            <View
-              style={{ backgroundColor: palette.bar }}
-              className="mb-0.5 h-0.5 w-6 rounded-full"
-            />
+            <View style={{ backgroundColor: palette.bar }} className="mb-0.5 h-0.5 w-6" />
           </View>
         </GestureDetector>
       </Animated.View>
@@ -388,7 +377,8 @@ function NowIndicator({ dayIndex, colWidth }: { dayIndex: number; colWidth: numb
         width: colWidth,
       }}
       className="absolute h-px bg-danger">
-      <View className="absolute -top-1 -left-0.5 h-2 w-2 rounded-full bg-danger" />
+      {/* Square cap, not a dot — reads as a caret on the rule. */}
+      <View className="absolute -top-1 left-0 h-2 w-1 bg-danger" />
     </View>
   );
 }
@@ -403,6 +393,7 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
     onMoveBlock,
     onResizeBlock,
     onToggleTodo,
+    onShowMore,
     compact = false,
   },
   ref
@@ -542,13 +533,15 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
     width: Math.max(colWidth - 6, 0),
   }));
 
-  const positioned = useMemo(() => {
-    const out: { date: string; index: number; items: PositionedBlock[] }[] = [];
-    days.forEach((date, index) => {
-      out.push({ date, index, items: layoutOverlaps(blocksByDay[date] ?? [], colWidth) });
-    });
-    return out;
-  }, [blocksByDay, days, colWidth]);
+  const positioned = useMemo(
+    () =>
+      days.map((date, index) => ({
+        date,
+        index,
+        ...layoutOverlaps(blocksByDay[date] ?? [], colWidth),
+      })),
+    [blocksByDay, days, colWidth]
+  );
 
   const handleMove = useCallback(
     (block: Block, dayIndex: number, startMin: number) => {
@@ -600,7 +593,7 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
                 className="absolute rounded-md border border-dashed border-accent bg-accent/20"
               />
 
-              {positioned.map(({ date, index, items }) =>
+              {positioned.map(({ date, index, positioned: items }) =>
                 items.map((item) => (
                   <GridBlock
                     key={`${date}-${item.block.id}`}
@@ -621,6 +614,28 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
                 ))
               )}
 
+              {/* Blocks that did not fit in a lane are never dropped silently —
+                  the count is shown and opens the day where they all fit. */}
+              {positioned.map(({ date, index, overflow }) =>
+                overflow.map((o) => (
+                  <Pressable
+                    key={`${date}-${o.key}`}
+                    onPress={() => onShowMore?.(date)}
+                    hitSlop={6}
+                    style={{
+                      position: 'absolute',
+                      top: (o.startMin / 60) * HOUR_HEIGHT + 2,
+                      left: (index + 1) * colWidth - 30,
+                      zIndex: 2,
+                    }}
+                    className="rounded-sm border border-line bg-surface px-1 py-0.5 active:opacity-70">
+                    <Text style={Type.status} className="text-fg-dim">
+                      +{o.count}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+
               {todayIndex >= 0 && colWidth ? (
                 <NowIndicator dayIndex={todayIndex} colWidth={colWidth} />
               ) : null}
@@ -632,8 +647,10 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
       {hint ? (
         <View
           pointerEvents="none"
-          className="absolute top-3 self-center rounded-full bg-fg px-3 py-1.5 shadow-lg">
-          <Text className="text-xs font-semibold tabular-nums text-canvas">{hint}</Text>
+          className="absolute top-3 self-center rounded-sm bg-fg px-2.5 py-1">
+          <Text style={Type.meta} className="text-canvas">
+            {hint}
+          </Text>
         </View>
       ) : null}
     </View>

@@ -13,8 +13,13 @@ export function useSheetTheme() {
     /** Sheet surface — one step up from the screen behind it. */
     background: { backgroundColor: c.surface },
     handle: { backgroundColor: c.fgFaint, width: 40 },
-    /** Inputs sit *below* the sheet surface so they read as wells. */
-    input: { backgroundColor: c.canvas, color: c.fg },
+    /** Inputs sit *below* the sheet surface, with a hairline, so they read as wells. */
+    input: {
+      backgroundColor: c.canvas,
+      color: c.fg,
+      borderWidth: 1,
+      borderColor: c.line,
+    },
     placeholder: c.fgMuted,
     invalid: { borderWidth: 1, borderColor: c.danger },
   };

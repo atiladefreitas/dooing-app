@@ -185,17 +185,57 @@ export function removeTodo(todos: Todo[], id: string): Todo[] {
 }
 
 /**
- * Sibling ordering: incomplete first, then earliest due date, then more
- * priorities, then oldest. A simplified version of state.lua sorting.
+ * Priority weights, mirroring the plugin's `config.options.priorities`
+ * (`../dooing/lua/dooing/config.lua:72`). Keep in step with the plugin.
+ */
+const PRIORITY_WEIGHTS: Record<string, number> = { important: 4, urgent: 2 };
+
+/** `config.options.hour_score_value` — the plugin's default. */
+const HOUR_SCORE_VALUE = 1 / 8;
+
+/**
+ * Importance score — a port of `state.lua:get_priority_score`.
+ *
+ * The estimate is a **multiplier, not an addend**: `1 / (hours × 1/8)`, so a
+ * two-hour important task outranks an eight-hour one. Quick wins float up.
+ * An estimate alone scores nothing — it only amplifies an existing priority.
+ * Completed todos always score 0.
+ */
+export function priorityScore(todo: Todo): number {
+  if (todo.done) return 0;
+
+  let score = 0;
+  for (const name of todo.priorities ?? []) score += PRIORITY_WEIGHTS[name] ?? 0;
+
+  const hours = todo.estimated_hours ?? 0;
+  return hours > 0 ? score / (hours * HOUR_SCORE_VALUE) : score;
+}
+
+/**
+ * Sibling ordering — a port of `state.lua:compare_todos`:
+ * incomplete first, then **importance descending**, then earliest due date,
+ * then oldest.
+ *
+ * Importance comes before the due date deliberately. An earlier version sorted
+ * by due date first, which buried an important task behind anything with a
+ * nearer deadline.
  */
 export function compareTodos(a: Todo, b: Todo): number {
   if (a.done !== b.done) return a.done ? 1 : -1;
-  const ad = a.due_at ?? Number.POSITIVE_INFINITY;
-  const bd = b.due_at ?? Number.POSITIVE_INFINITY;
-  if (ad !== bd) return ad - bd;
-  const ap = a.priorities?.length ?? 0;
-  const bp = b.priorities?.length ?? 0;
-  if (ap !== bp) return bp - ap;
+
+  const scoreA = priorityScore(a);
+  const scoreB = priorityScore(b);
+  if (scoreA !== scoreB) return scoreB - scoreA;
+
+  // A todo with a deadline outranks one without.
+  if (a.due_at != null && b.due_at != null) {
+    if (a.due_at !== b.due_at) return a.due_at - b.due_at;
+  } else if (a.due_at != null) {
+    return -1;
+  } else if (b.due_at != null) {
+    return 1;
+  }
+
   return (a.created_at ?? 0) - (b.created_at ?? 0);
 }
 
