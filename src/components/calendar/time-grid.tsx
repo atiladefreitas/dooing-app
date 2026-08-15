@@ -35,6 +35,8 @@ export const HOUR_HEIGHT = 62;
 export const GUTTER_W = 52;
 const DAY_HEIGHT = HOUR_HEIGHT * 24;
 const LONG_PRESS_MS = 220;
+/** Pixel height of one snap step — the unit every drag quantises to. */
+const STEP_H = (GRANULARITY / 60) * HOUR_HEIGHT;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -44,8 +46,15 @@ export interface GridHit {
 }
 
 export interface TimeGridHandle {
-  hitTest: (pageX: number, pageY: number) => GridHit | null;
+  /**
+   * `pageY` is the *top edge* of whatever is being dropped, not the finger —
+   * a block starts where its top edge lands, so the caller passes the ghost's
+   * top so the preview and the commit agree to the pixel.
+   */
+  hitTest: (pageX: number, pageY: number, durationMin?: number) => GridHit | null;
   scrollToMinute: (minute: number, animated?: boolean) => void;
+  /** Re-read the viewport origin — call before a drag starts. */
+  remeasure: () => void;
 }
 
 interface TimeGridProps {
@@ -59,6 +68,8 @@ interface TimeGridProps {
   onToggleTodo: (todoId: string) => void;
   /** Open a single day — used by the `+n` overflow marker. */
   onShowMore?: (date: string) => void;
+  /** Snapped landing slot for an in-flight drag from the unscheduled tray. */
+  dropPreview?: { date: string; start_min: number; duration_min: number } | null;
   compact?: boolean;
 }
 
@@ -140,6 +151,12 @@ function GridBlock({
   const extraHeight = useSharedValue(0);
   const active = useSharedValue(0);
   const lastStep = useSharedValue(0);
+  // What the gesture would commit right now. The block itself tracks the finger
+  // 1:1; these drive the dashed placeholder, so the snapped landing slot is
+  // always visible without the block ever lagging behind the touch.
+  const pendingStart = useSharedValue(block.start_min);
+  const pendingDay = useSharedValue(dayIndex);
+  const pendingDuration = useSharedValue(block.duration_min);
 
   // Lanes never overlap, so every block keeps its own hit area.
   const slotWidth = (colWidth - 4) / columns;
@@ -155,12 +172,11 @@ function GridBlock({
   );
 
   const commitMove = useCallback(
-    (dayDelta: number, startMin: number) => {
+    (targetDay: number, startMin: number) => {
       setHint(null);
-      const target = Math.max(0, Math.min(dayCount - 1, dayIndex + dayDelta));
-      onMove(block, target, startMin);
+      onMove(block, targetDay, startMin);
     },
-    [block, dayCount, dayIndex, onMove, setHint]
+    [block, onMove, setHint]
   );
 
   const commitResize = useCallback(
@@ -178,30 +194,49 @@ function GridBlock({
         .onStart(() => {
           active.set(1);
           lastStep.set(0);
+          pendingStart.set(block.start_min);
+          pendingDay.set(dayIndex);
+          pendingDuration.set(block.duration_min);
           runOnJS(setScrollEnabled)(false);
           runOnJS(showHint)(block.start_min, block.duration_min);
         })
         .onUpdate((e) => {
-          translateX.set(e.translationX);
-          translateY.set(e.translationY);
-          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
-          if (step !== lastStep.get()) {
-            lastStep.set(step);
-            const next = Math.max(
-              0,
-              Math.min(1440 - block.duration_min, block.start_min + step * GRANULARITY)
-            );
-            runOnJS(showHint)(next, block.duration_min);
-          }
-        })
-        .onEnd((e) => {
-          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
-          const startMin = Math.max(
+          // The block itself is never snapped — it sits under the finger. Only
+          // the bounds of the day clamp it, so it can never be dragged to a
+          // position it could not actually land on.
+          const dy = Math.min(
+            Math.max(e.translationY, -top),
+            ((1440 - block.duration_min) / 60) * HOUR_HEIGHT - top
+          );
+          translateY.set(dy);
+
+          const dx =
+            dayCount > 1 && colWidth
+              ? Math.min(
+                  Math.max(e.translationX, -dayIndex * colWidth),
+                  (dayCount - 1 - dayIndex) * colWidth
+                )
+              : 0;
+          translateX.set(dx);
+
+          // Snapped landing slot, shown as the placeholder and committed on end.
+          const step = Math.round(dy / STEP_H);
+          const start = Math.max(
             0,
             Math.min(1440 - block.duration_min, block.start_min + step * GRANULARITY)
           );
-          const dayDelta = dayCount > 1 ? Math.round(e.translationX / colWidth) : 0;
-          runOnJS(commitMove)(dayDelta, startMin);
+          pendingStart.set(start);
+          pendingDay.set(
+            Math.max(0, Math.min(dayCount - 1, dayIndex + (colWidth ? Math.round(dx / colWidth) : 0)))
+          );
+
+          if (step !== lastStep.get()) {
+            lastStep.set(step);
+            runOnJS(showHint)(start, block.duration_min);
+          }
+        })
+        .onEnd(() => {
+          runOnJS(commitMove)(pendingDay.get(), pendingStart.get());
         })
         .onFinalize(() => {
           translateX.set(0);
@@ -217,10 +252,15 @@ function GridBlock({
       colWidth,
       commitMove,
       dayCount,
+      dayIndex,
       lastStep,
+      pendingDay,
+      pendingDuration,
+      pendingStart,
       setHint,
       setScrollEnabled,
       showHint,
+      top,
       translateX,
       translateY,
     ]
@@ -236,27 +276,32 @@ function GridBlock({
         .onStart(() => {
           active.set(1);
           lastStep.set(0);
+          pendingStart.set(block.start_min);
+          pendingDay.set(dayIndex);
+          pendingDuration.set(block.duration_min);
           runOnJS(showHint)(block.start_min, block.duration_min);
         })
         .onUpdate((e) => {
-          extraHeight.set(e.translationY);
-          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
-          if (step !== lastStep.get()) {
-            lastStep.set(step);
-            const next = Math.max(
-              MIN_DURATION,
-              Math.min(1440 - block.start_min, block.duration_min + step * GRANULARITY)
-            );
-            runOnJS(showHint)(block.start_min, next);
-          }
-        })
-        .onEnd((e) => {
-          const step = Math.round(e.translationY / HOUR_HEIGHT / (GRANULARITY / 60));
+          // Edge follows the finger; only the legal duration range clamps it.
+          const dy = Math.min(
+            Math.max(e.translationY, ((MIN_DURATION - block.duration_min) / 60) * HOUR_HEIGHT),
+            ((1440 - block.start_min - block.duration_min) / 60) * HOUR_HEIGHT
+          );
+          extraHeight.set(dy);
+
+          const step = Math.round(dy / STEP_H);
           const duration = Math.max(
             MIN_DURATION,
             Math.min(1440 - block.start_min, block.duration_min + step * GRANULARITY)
           );
-          runOnJS(commitResize)(duration);
+          pendingDuration.set(duration);
+          if (step !== lastStep.get()) {
+            lastStep.set(step);
+            runOnJS(showHint)(block.start_min, duration);
+          }
+        })
+        .onEnd(() => {
+          runOnJS(commitResize)(pendingDuration.get());
         })
         .onFinalize(() => {
           extraHeight.set(0);
@@ -269,8 +314,12 @@ function GridBlock({
       block.duration_min,
       block.start_min,
       commitResize,
+      dayIndex,
       extraHeight,
       lastStep,
+      pendingDay,
+      pendingDuration,
+      pendingStart,
       setHint,
       setScrollEnabled,
       showHint,
@@ -293,8 +342,18 @@ function GridBlock({
     transform: [{ translateX: translateX.get() }, { translateY: translateY.get() }],
     height: Math.max(height + extraHeight.get(), 22),
     borderColor: active.get() ? palette.bar : palette.border,
+    opacity: active.get() ? 0.92 : 1,
     zIndex: active.get() ? 50 : 1,
     elevation: active.get() ? 12 : 0,
+  }));
+
+  // Where the block will actually land once you let go.
+  const placeholderStyle = useAnimatedStyle(() => ({
+    opacity: active.get(),
+    top: (pendingStart.get() / 60) * HOUR_HEIGHT,
+    left: pendingDay.get() * colWidth + 2 + column * slotWidth,
+    width: Math.max(slotWidth - 2, 0),
+    height: Math.max((pendingDuration.get() / 60) * HOUR_HEIGHT, 22),
   }));
 
   const status = todo ? getStatus(todo) : null;
@@ -302,61 +361,71 @@ function GridBlock({
   const tall = height >= 46;
 
   return (
-    <GestureDetector gesture={composed}>
+    <>
       <Animated.View
+        pointerEvents="none"
         style={[
-          {
-            position: 'absolute',
-            top,
-            left,
-            width: slotWidth - 2,
-            backgroundColor: palette.fill,
-          },
-          animatedStyle,
+          { position: 'absolute', zIndex: 2, borderColor: palette.bar },
+          placeholderStyle,
         ]}
-        className="overflow-hidden rounded-sm border">
-        <View
-          style={{ backgroundColor: palette.bar }}
-          className="absolute top-0 bottom-0 left-0 w-0.5"
-        />
-        <View className="flex-row flex-1 gap-1 items-start px-1.5 py-1 pl-2.5">
-          {todo ? (
-            <View className="pt-px">
-              <StatusMarker
-                status={status ?? 'pending'}
-                size={12}
-                compact
-                onPress={() => onToggleTodo(todo.id)}
-              />
-            </View>
-          ) : null}
-          <View className="flex-1">
-            {/* Title is the human talking (sans); the time is the machine (mono). */}
-            <Text
-              numberOfLines={tall ? 2 : 1}
-              style={{
-                fontFamily: Font.sans,
-                fontSize: 11,
-                lineHeight: 14,
-                color: todo?.done ? palette.muted : palette.text,
-              }}
-              className={todo?.done ? 'line-through' : ''}>
-              {label}
-            </Text>
-            {tall && !compact ? (
-              <Text style={[Type.status, { color: palette.dim }]}>
-                {formatMinutes(block.start_min)}
-              </Text>
+        className="rounded-sm border border-dashed"
+      />
+      <GestureDetector gesture={composed}>
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              top,
+              left,
+              width: slotWidth - 2,
+              backgroundColor: palette.fill,
+            },
+            animatedStyle,
+          ]}
+          className="overflow-hidden rounded-sm border">
+          <View
+            style={{ backgroundColor: palette.bar }}
+            className="absolute top-0 bottom-0 left-0 w-0.5"
+          />
+          <View className="flex-row flex-1 gap-1 items-start px-1.5 py-1 pl-2.5">
+            {todo ? (
+              <View className="pt-px">
+                <StatusMarker
+                  status={status ?? 'pending'}
+                  size={12}
+                  compact
+                  onPress={() => onToggleTodo(todo.id)}
+                />
+              </View>
             ) : null}
+            <View className="flex-1">
+              {/* Title is the human talking (sans); the time is the machine (mono). */}
+              <Text
+                numberOfLines={tall ? 2 : 1}
+                style={{
+                  fontFamily: Font.sans,
+                  fontSize: 11,
+                  lineHeight: 14,
+                  color: todo?.done ? palette.muted : palette.text,
+                }}
+                className={todo?.done ? 'line-through' : ''}>
+                {label}
+              </Text>
+              {tall && !compact ? (
+                <Text style={[Type.status, { color: palette.dim }]}>
+                  {formatMinutes(block.start_min)}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
-        <GestureDetector gesture={resizePan}>
-          <View className="absolute right-0 bottom-0 left-0 justify-end items-center h-4">
-            <View style={{ backgroundColor: palette.bar }} className="mb-0.5 h-0.5 w-6" />
-          </View>
-        </GestureDetector>
-      </Animated.View>
-    </GestureDetector>
+          <GestureDetector gesture={resizePan}>
+            <View className="absolute right-0 bottom-0 left-0 justify-end items-center h-4">
+              <View style={{ backgroundColor: palette.bar }} className="mb-0.5 h-0.5 w-6" />
+            </View>
+          </GestureDetector>
+        </Animated.View>
+      </GestureDetector>
+    </>
   );
 }
 
@@ -394,6 +463,7 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
     onResizeBlock,
     onToggleTodo,
     onShowMore,
+    dropPreview,
     compact = false,
   },
   ref
@@ -416,16 +486,20 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
   const draftStart = useSharedValue(0);
   const draftEnd = useSharedValue(0);
 
+  // Deferred a frame: measuring inside `onLayout` can read the pre-commit
+  // position on Android, which offsets every drop by the header height.
   const measure = useCallback(() => {
-    viewportRef.current?.measureInWindow((x, y, width, height) => {
-      viewport.current = { x, y, width, height };
+    requestAnimationFrame(() => {
+      viewportRef.current?.measureInWindow((x, y, width, height) => {
+        viewport.current = { x, y, width, height };
+      });
     });
   }, []);
 
   useImperativeHandle(
     ref,
     () => ({
-      hitTest: (pageX, pageY) => {
+      hitTest: (pageX, pageY, durationMin = MIN_DURATION) => {
         const { x, y, width, height } = viewport.current;
         if (!width || !height || !colWidth) return null;
         if (pageX < x || pageX > x + width || pageY < y || pageY > y + height) return null;
@@ -434,7 +508,7 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
         const raw = (localY / HOUR_HEIGHT) * 60;
         const start = Math.max(
           0,
-          Math.min(1440 - MIN_DURATION, Math.round(raw / GRANULARITY) * GRANULARITY)
+          Math.min(1440 - durationMin, Math.round(raw / GRANULARITY) * GRANULARITY)
         );
 
         const localX = pageX - x - GUTTER_W;
@@ -445,8 +519,9 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
         const offset = Math.max(0, (minute / 60) * HOUR_HEIGHT - HOUR_HEIGHT * 1.5);
         scrollRef.current?.scrollTo({ y: offset, animated });
       },
+      remeasure: measure,
     }),
-    [colWidth, days]
+    [colWidth, days, measure]
   );
 
   const commitCreate = useCallback(
@@ -543,6 +618,8 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
     [blocksByDay, days, colWidth]
   );
 
+  const previewIndex = dropPreview ? days.indexOf(dropPreview.date) : -1;
+
   const handleMove = useCallback(
     (block: Block, dayIndex: number, startMin: number) => {
       onMoveBlock(block, days[dayIndex] ?? block.date, startMin);
@@ -592,6 +669,23 @@ export const TimeGrid = forwardRef<TimeGridHandle, TimeGridProps>(function TimeG
                 style={draftStyle}
                 className="absolute rounded-md border border-dashed border-accent bg-accent/20"
               />
+
+              {/* Landing slot for a tray drag. Drawn from the same hit-test the
+                  drop commits, so the outline is never a guess. */}
+              {previewIndex >= 0 && dropPreview && colWidth ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    top: (dropPreview.start_min / 60) * HOUR_HEIGHT,
+                    left: previewIndex * colWidth + 2,
+                    width: Math.max(colWidth - 6, 0),
+                    height: Math.max((dropPreview.duration_min / 60) * HOUR_HEIGHT, 8),
+                    zIndex: 3,
+                  }}
+                  className="rounded-sm border border-dashed border-accent bg-accent/20"
+                />
+              ) : null}
 
               {positioned.map(({ date, index, positioned: items }) =>
                 items.map((item) => (

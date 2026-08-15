@@ -23,6 +23,7 @@ interface GridViewProps {
   onToggleTodo: (todoId: string) => void;
   onOpenTodo: (todo: Todo) => void;
   onSelectDay: (date: string) => void;
+  dropPreview?: { date: string; start_min: number; duration_min: number } | null;
 }
 
 function DueChip({ todo, onPress }: { todo: Todo; onPress: () => void }) {
@@ -64,6 +65,7 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
     onToggleTodo,
     onOpenTodo,
     onSelectDay,
+    dropPreview,
   },
   ref
 ) {
@@ -139,6 +141,7 @@ export const GridView = forwardRef<TimeGridHandle, GridViewProps>(function GridV
         onResizeBlock={onResizeBlock}
         onToggleTodo={onToggleTodo}
         onShowMore={onSelectDay}
+        dropPreview={dropPreview}
         compact={compact}
       />
     </View>

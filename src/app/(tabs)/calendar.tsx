@@ -16,6 +16,7 @@ import { blocksByDate, GRANULARITY, paletteForTag } from '@/lib/block';
 import {
   addDays,
   addMonths,
+  formatMinutes,
   longDateLabel,
   minutesNow,
   monthLabel,
@@ -37,6 +38,8 @@ const VIEWS: { label: string; value: CalendarView }[] = [
 ];
 
 const WEEK_SPAN = 3;
+/** Length a todo dropped onto the grid gets — the preview must match the commit. */
+const DROP_DURATION = 60;
 
 function nextSlot(): number {
   return Math.min(1440 - GRANULARITY, Math.ceil(minutesNow() / GRANULARITY) * GRANULARITY);
@@ -60,14 +63,32 @@ export default function CalendarScreen() {
   const [cursor, setCursor] = useState(todayKey);
   const [selected, setSelected] = useState(todayKey);
   const [dragging, setDragging] = useState<Todo | null>(null);
-  const [dropHint, setDropHint] = useState<string | null>(null);
+  const [dropHit, setDropHit] = useState<{ date: string; start_min: number } | null>(null);
 
   const gridRef = useRef<TimeGridHandle>(null);
   const editorRef = useRef<BlockEditorSheetRef>(null);
   const scheduledFor = useRef<string | null>(null);
+  const rootRef = useRef<View>(null);
 
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
+  const dragW = useSharedValue(150);
+  // The ghost is absolutely positioned inside this screen, but the gesture
+  // reports window coordinates — without the screen's own origin the ghost
+  // lands a header's height below the finger.
+  const rootX = useSharedValue(0);
+  const rootY = useSharedValue(0);
+
+  const measureRoot = useCallback(() => {
+    requestAnimationFrame(() => {
+      rootRef.current?.measureInWindow((x, y) => {
+        rootX.set(x);
+        rootY.set(y);
+      });
+    });
+  }, [rootX, rootY]);
 
   const days = useMemo(
     () =>
@@ -190,19 +211,29 @@ export default function CalendarScreen() {
     [resizeBlock]
   );
 
-  const handleDragMove = useCallback((x: number, y: number) => {
-    const hit = gridRef.current?.hitTest(x, y);
-    setDropHint(hit ? `${hit.date === todayKey() ? 'Today' : shortDateLabel(hit.date)}` : null);
+  const handleDragStart = useCallback((todo: Todo) => {
+    // The tray appearing/disappearing reflows the grid; re-read its origin so
+    // the very first hit test of the drag is already correct.
+    gridRef.current?.remeasure();
+    measureRoot();
+    setDragging(todo);
+  }, [measureRoot]);
+
+  const handleDragMove = useCallback((x: number, topY: number) => {
+    const hit = gridRef.current?.hitTest(x, topY, DROP_DURATION) ?? null;
+    setDropHit((prev) =>
+      prev?.date === hit?.date && prev?.start_min === hit?.start_min ? prev : hit
+    );
   }, []);
 
-  const handleDrop = useCallback((todo: Todo, x: number, y: number) => {
-    const hit = gridRef.current?.hitTest(x, y);
+  const handleDrop = useCallback((todo: Todo, x: number, topY: number) => {
+    const hit = gridRef.current?.hitTest(x, topY, DROP_DURATION);
     if (!hit) return;
     editorRef.current?.present({
       mode: 'create',
       date: hit.date,
       start_min: hit.start_min,
-      duration_min: 60,
+      duration_min: DROP_DURATION,
       todoId: todo.id,
       title: todo.text,
     });
@@ -220,14 +251,26 @@ export default function CalendarScreen() {
     [shift]
   );
 
+  // Window point → screen-local point → back off by the grab offset, so the
+  // ghost sits under the finger exactly where the chip was picked up.
   const overlayStyle = useAnimatedStyle(() => ({
-    left: dragX.get() - 70,
-    top: dragY.get() - 24,
+    width: dragW.get(),
+    transform: [
+      { translateX: dragX.get() - rootX.get() - grabX.get() },
+      { translateY: dragY.get() - rootY.get() - grabY.get() },
+    ],
   }));
 
   const dragPalette = dragging
     ? paletteForTag(extractCategory(dragging.text).toLowerCase(), theme)
     : null;
+
+  const dropHint = dropHit
+    ? `${dropHit.date === todayKey() ? 'today' : shortDateLabel(dropHit.date)} · ${formatMinutes(dropHit.start_min)}`
+    : null;
+
+  const dropPreview =
+    dragging && dropHit ? { ...dropHit, duration_min: DROP_DURATION } : null;
 
   const title =
     view === 'month'
@@ -240,144 +283,147 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-canvas">
-      <View className="flex-row items-baseline justify-between px-4 pb-2 pt-1">
-        <Text style={Type.section} className="text-fg">
-          {title}
-        </Text>
-        <View className="flex-row items-center gap-3">
-          {!isToday ? (
-            <Pressable onPress={goToday} hitSlop={8} className="active:opacity-60">
-              <Text style={Type.meta} className="text-accent">
-                [today]
-              </Text>
-            </Pressable>
-          ) : null}
-          {/* Mono arrows rather than icons — same voice as the `→` in the sync log. */}
-          <Pressable onPress={() => shift(-1)} hitSlop={12} className="active:opacity-60">
-            <Text style={Type.meta} className="text-fg-dim">
-              ←
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => shift(1)} hitSlop={12} className="active:opacity-60">
-            <Text style={Type.meta} className="text-fg-dim">
-              →
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Bracket marks the active view, exactly as it marks the active tab. Inactive
-          labels pad with spaces so the mono row never shifts width. */}
-      <View className="mb-2 flex-row gap-4 border-y border-line px-4 py-2">
-        {VIEWS.map((v) => {
-          const active = view === v.value;
-          return (
-            <Pressable
-              key={v.value}
-              onPress={() => setView(v.value)}
-              hitSlop={8}
-              className="active:opacity-60">
-              <Text style={Type.meta} className={active ? 'text-accent' : 'text-fg-muted'}>
-                {active ? `[${v.label}]` : ` ${v.label} `}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {view === 'month' ? (
-        <MonthView
-          cursor={cursor}
-          selected={selected}
-          blocks={blocks}
-          todos={todos}
-          todoForBlock={todoForBlock}
-          onSelect={setSelected}
-          onOpenDay={openDay}
-          onOpenBlock={handleOpenBlock}
-          onOpenTodo={openTodo}
-          onToggleTodo={toggleStatus}
-        />
-      ) : (
-        <GestureDetector gesture={pager}>
-          <View className="flex-1">
-            <GridView
-              ref={gridRef}
-              days={days}
-              blocksByDay={byDay}
-              todos={todos}
-              todoForBlock={todoForBlock}
-              onCreate={handleCreate}
-              onOpenBlock={handleOpenBlock}
-              onMoveBlock={handleMove}
-              onResizeBlock={handleResize}
-              onToggleTodo={toggleStatus}
-              onOpenTodo={openTodo}
-              onSelectDay={openDay}
-            />
-          </View>
-        </GestureDetector>
-      )}
-
-      {view !== 'month' ? (
-        <UnscheduledTray
-          todos={tray}
-          dragX={dragX}
-          dragY={dragY}
-          onDragStart={setDragging}
-          onDragMove={handleDragMove}
-          onDrop={handleDrop}
-          onDragEnd={() => {
-            setDragging(null);
-            setDropHint(null);
-          }}
-          onPressTodo={openTodo}
-        />
-      ) : null}
-
-      {dragging && dragPalette ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            { position: 'absolute', width: 150 },
-            overlayStyle,
-          ]}>
-          <View
-            style={{ backgroundColor: dragPalette.fill, borderColor: dragPalette.bar }}
-            className="rounded-sm border px-2 py-1.5">
-            <View
-              style={{ backgroundColor: dragPalette.bar }}
-              className="absolute bottom-0 left-0 top-0 w-0.5"
-            />
-            <Text
-              numberOfLines={1}
-              style={[Type.meta, { color: dragPalette.text }]}
-              className="pl-1.5">
-              {dragging.text}
-            </Text>
-            {dropHint ? (
-              <Text style={[Type.status, { color: dragPalette.dim }]} className="pl-1.5">
-                {dropHint}
-              </Text>
+      <View ref={rootRef} collapsable={false} onLayout={measureRoot} className="flex-1">
+        <View className="flex-row items-baseline justify-between px-4 pb-2 pt-1">
+          <Text style={Type.section} className="text-fg">
+            {title}
+          </Text>
+          <View className="flex-row items-center gap-3">
+            {!isToday ? (
+              <Pressable onPress={goToday} hitSlop={8} className="active:opacity-60">
+                <Text style={Type.meta} className="text-accent">
+                  [today]
+                </Text>
+              </Pressable>
             ) : null}
+            {/* Mono arrows rather than icons — same voice as the `→` in the sync log. */}
+            <Pressable onPress={() => shift(-1)} hitSlop={12} className="active:opacity-60">
+              <Text style={Type.meta} className="text-fg-dim">
+                ←
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => shift(1)} hitSlop={12} className="active:opacity-60">
+              <Text style={Type.meta} className="text-fg-dim">
+                →
+              </Text>
+            </Pressable>
           </View>
-        </Animated.View>
-      ) : null}
+        </View>
 
-      <Pressable
-        onPress={() =>
-          editorRef.current?.present({
-            mode: 'create',
-            date: view === 'month' ? selected : cursor,
-            start_min: nextSlot(),
-            duration_min: 60,
-          })
-        }
-        accessibilityLabel="Add time block"
-        style={{ elevation: 8 }}
-        className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:opacity-80">
-        <Plus size={26} color={c.canvas} strokeWidth={2.5} />
-      </Pressable>
+        {/* Bracket marks the active view, exactly as it marks the active tab. Inactive
+            labels pad with spaces so the mono row never shifts width. */}
+        <View className="mb-2 flex-row gap-4 border-y border-line px-4 py-2">
+          {VIEWS.map((v) => {
+            const active = view === v.value;
+            return (
+              <Pressable
+                key={v.value}
+                onPress={() => setView(v.value)}
+                hitSlop={8}
+                className="active:opacity-60">
+                <Text style={Type.meta} className={active ? 'text-accent' : 'text-fg-muted'}>
+                  {active ? `[${v.label}]` : ` ${v.label} `}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {view === 'month' ? (
+          <MonthView
+            cursor={cursor}
+            selected={selected}
+            blocks={blocks}
+            todos={todos}
+            todoForBlock={todoForBlock}
+            onSelect={setSelected}
+            onOpenDay={openDay}
+            onOpenBlock={handleOpenBlock}
+            onOpenTodo={openTodo}
+            onToggleTodo={toggleStatus}
+          />
+        ) : (
+          <GestureDetector gesture={pager}>
+            <View className="flex-1">
+              <GridView
+                ref={gridRef}
+                days={days}
+                blocksByDay={byDay}
+                todos={todos}
+                todoForBlock={todoForBlock}
+                onCreate={handleCreate}
+                onOpenBlock={handleOpenBlock}
+                onMoveBlock={handleMove}
+                onResizeBlock={handleResize}
+                onToggleTodo={toggleStatus}
+                onOpenTodo={openTodo}
+                onSelectDay={openDay}
+                dropPreview={dropPreview}
+              />
+            </View>
+          </GestureDetector>
+        )}
+
+        {view !== 'month' ? (
+          <UnscheduledTray
+            todos={tray}
+            dragX={dragX}
+            dragY={dragY}
+            grabX={grabX}
+            grabY={grabY}
+            dragW={dragW}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDrop={handleDrop}
+            onDragEnd={() => {
+              setDragging(null);
+              setDropHit(null);
+            }}
+            onPressTodo={openTodo}
+          />
+        ) : null}
+
+        {dragging && dragPalette ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[{ position: 'absolute', top: 0, left: 0, zIndex: 100 }, overlayStyle]}>
+            <View
+              style={{ backgroundColor: dragPalette.fill, borderColor: dragPalette.bar }}
+              className="rounded-sm border px-2 py-1.5">
+              <View
+                style={{ backgroundColor: dragPalette.bar }}
+                className="absolute bottom-0 left-0 top-0 w-0.5"
+              />
+              <Text
+                numberOfLines={1}
+                style={[Type.meta, { color: dragPalette.text }]}
+                className="pl-1.5">
+                {dragging.text}
+              </Text>
+              {dropHint ? (
+                <Text style={[Type.status, { color: dragPalette.dim }]} className="pl-1.5">
+                  {dropHint}
+                </Text>
+              ) : null}
+            </View>
+          </Animated.View>
+        ) : null}
+
+        <Pressable
+          onPress={() =>
+            editorRef.current?.present({
+              mode: 'create',
+              date: view === 'month' ? selected : cursor,
+              start_min: nextSlot(),
+              duration_min: 60,
+            })
+          }
+          accessibilityLabel="Add time block"
+          style={{ elevation: 8 }}
+          className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:opacity-80">
+          <Plus size={26} color={c.canvas} strokeWidth={2.5} />
+        </Pressable>
+      </View>
 
       <BlockEditorSheet
         ref={editorRef}
