@@ -1,5 +1,4 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -7,6 +6,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BlockEditorSheet, BlockEditorSheetRef } from '@/components/block-editor-sheet';
+import { Fab } from '@/components/fab';
 import { GridView } from '@/components/calendar/grid-view';
 import { MonthView } from '@/components/calendar/month-view';
 import { TimeGridHandle } from '@/components/calendar/time-grid';
@@ -409,7 +409,7 @@ export default function CalendarScreen() {
           </Animated.View>
         ) : null}
 
-        <Pressable
+        <Fab
           onPress={() =>
             editorRef.current?.present({
               mode: 'create',
@@ -419,10 +419,8 @@ export default function CalendarScreen() {
             })
           }
           accessibilityLabel="Add time block"
-          style={{ elevation: 8 }}
-          className="absolute bottom-24 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:opacity-80">
-          <Plus size={26} color={c.canvas} strokeWidth={2.5} />
-        </Pressable>
+          style={{ right: 24, bottom: 96 }}
+        />
       </View>
 
       <BlockEditorSheet

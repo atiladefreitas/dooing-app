@@ -1,5 +1,8 @@
+import { useEffect, useRef } from "react";
 import { Pressable, Text } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
+import { Springs } from "@/constants/motion";
 import { Font } from "@/constants/theme";
 import { TodoStatus } from "@/types/todo";
 
@@ -50,13 +53,24 @@ interface Props {
   compact?: boolean;
 }
 
-export function StatusMarker({
-  status,
-  onPress,
-  priorities,
-  size = 14,
-  compact = false,
-}: Props) {
+export function StatusMarker({ status, onPress, priorities, size = 14, compact = false }: Props) {
+  // The new glyph "stamps" in: it eases up from small and settles with no
+  // overshoot. Runs only on status CHANGE, never on mount, so scrolling a
+  // list never triggers it.
+  const stamp = useSharedValue(1);
+  const prevStatus = useRef(status);
+
+  useEffect(() => {
+    if (prevStatus.current === status) return;
+    prevStatus.current = status;
+    stamp.value = 0.5;
+    stamp.value = withSpring(1, Springs.stamp);
+  }, [status, stamp]);
+
+  const stampStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: stamp.value }],
+  }));
+
   return (
     <Pressable
       hitSlop={12}
@@ -65,17 +79,19 @@ export function StatusMarker({
       accessibilityState={{ checked: status === "done" }}
       // A terminal highlights the cell; it does not fade. No opacity, no scale.
       className="rounded-sm active:bg-elevated">
-      <Text
-        style={{
-          fontFamily: Font.monoMedium,
-          fontSize: size,
-          lineHeight: Math.round(size * 1.45),
-          minWidth: Math.round(size * (compact ? 0.9 : 1.95)),
-          textAlign: "center",
-        }}
-        className={colorClass(status, priorities)}>
-        {(compact ? GLYPH_COMPACT : GLYPH)[status]}
-      </Text>
+      <Animated.View style={stampStyle}>
+        <Text
+          style={{
+            fontFamily: Font.monoMedium,
+            fontSize: size,
+            lineHeight: Math.round(size * 1.45),
+            minWidth: Math.round(size * (compact ? 0.9 : 1.95)),
+            textAlign: "center",
+          }}
+          className={colorClass(status, priorities)}>
+          {(compact ? GLYPH_COMPACT : GLYPH)[status]}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }

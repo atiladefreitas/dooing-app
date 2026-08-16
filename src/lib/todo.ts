@@ -96,13 +96,15 @@ export function createTodo(
   }: CreateOptions = {},
   origin = 'local'
 ): Todo {
+  const created = nowSeconds();
   return {
     id: generateId(),
     text,
     done: false,
     in_progress: false,
     category: extractCategory(text),
-    created_at: nowSeconds(),
+    created_at: created,
+    updated_at: created,
     completed_at: null,
     priorities,
     estimated_hours,
@@ -125,13 +127,16 @@ export function normalizeTodo(raw: unknown, origin = 'server'): Todo {
   const category =
     typeof r.category === 'string' && r.category ? r.category : extractCategory(text);
 
+  const created_at = toNumberOrNull(r.created_at) ?? nowSeconds();
   return {
     id: r.id != null ? String(r.id) : generateId(),
     text,
     done: Boolean(r.done),
     in_progress: Boolean(r.in_progress),
     category,
-    created_at: toNumberOrNull(r.created_at) ?? nowSeconds(),
+    created_at,
+    // The wire contract: absent updated_at falls back to created_at.
+    updated_at: toNumberOrNull(r.updated_at) ?? created_at,
     completed_at: toNumberOrNull(r.completed_at),
     priorities: Array.isArray(r.priorities) ? r.priorities.map(String) : null,
     estimated_hours: toNumberOrNull(r.estimated_hours),

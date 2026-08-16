@@ -33,7 +33,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#1a1b26",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
@@ -44,7 +44,8 @@
           "cameraPermission": "Allow Dooing to scan the QR code shared by the Neovim plugin.",
           "barcodeScannerEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

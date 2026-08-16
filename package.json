@@ -18,11 +18,13 @@
     "expo-image": "~57.0.0",
     "expo-linking": "~57.0.1",
     "expo-router": "~57.0.2",
+    "expo-secure-store": "~57.0.1",
     "expo-splash-screen": "~57.0.1",
     "expo-status-bar": "~57.0.0",
     "expo-symbols": "~57.0.0",
     "expo-system-ui": "~57.0.0",
     "expo-web-browser": "~57.0.0",
+    "lottie-react-native": "~7.3.8",
     "lucide-react-native": "^1.23.0",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
@@ -44,7 +46,8 @@
     "eslint-config-expo": "~57.0.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^3.4.19",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "start": "expo start",
@@ -52,7 +55,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "vitest run"
   },
   "private": true
 }

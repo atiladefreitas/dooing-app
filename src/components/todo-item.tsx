@@ -1,5 +1,13 @@
+import { useEffect, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
+import { Springs } from "@/constants/motion";
 import { Layout, ThemeColors, Type, useThemeColors } from "@/constants/theme";
 import { daysBetween, formatMinutes, shortDateLabel, todayKey, weekdayShort } from "@/lib/date";
 import { categoryColor } from "@/lib/palette";
@@ -63,9 +71,7 @@ function TreeGuides({ guides, color }: { guides: boolean[]; color: string }) {
                   top: 0,
                   width: 1,
                   backgroundColor: color,
-                  ...(stopsAtConnect
-                    ? { height: Layout.treeConnectY }
-                    : { bottom: 0 }),
+                  ...(stopsAtConnect ? { height: Layout.treeConnectY } : { bottom: 0 }),
                 }}
               />
             ) : null}
@@ -86,6 +92,59 @@ function TreeGuides({ guides, color }: { guides: boolean[]; color: string }) {
         );
       })}
     </View>
+  );
+}
+
+/**
+ * Collapse toggle with a rotating chevron: one `▸` glyph that springs through
+ * 90° instead of swapping to `▾`, so expanding a subtree reads as the arrow
+ * physically turning to point at the children.
+ */
+function CollapseToggle({
+  collapsed,
+  count,
+  onPress,
+}: {
+  collapsed: boolean;
+  count: number;
+  onPress?: () => void;
+}) {
+  // Initialized to the current state and animated only on CHANGE, so rows
+  // mounting during a scroll never twirl their chevrons.
+  const turn = useSharedValue(collapsed ? 0 : 1);
+  const prevCollapsed = useRef(collapsed);
+
+  useEffect(() => {
+    if (prevCollapsed.current === collapsed) return;
+    prevCollapsed.current = collapsed;
+    turn.value = withSpring(collapsed ? 0 : 1, Springs.stamp);
+  }, [collapsed, turn]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${turn.value * 90}deg` }],
+  }));
+
+  return (
+    <Pressable
+      hitSlop={10}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={collapsed ? "Expand subtasks" : "Collapse subtasks"}
+      className="flex-row items-center rounded-sm active:bg-elevated">
+      <Animated.View style={chevronStyle}>
+        <Text
+          style={Type.meta}
+          className="text-fg-muted">
+          ▸
+        </Text>
+      </Animated.View>
+      <Text
+        style={Type.meta}
+        className="text-fg-muted">
+        {" "}
+        {count}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -128,6 +187,22 @@ export function TodoItem({
   const colors = useThemeColors();
   const status = getStatus(todo);
 
+  // The meta line eases to its dimmed state instead of snapping, so completing
+  // a todo reads as the row settling rather than flickering. Starts at the
+  // current state and animates only on CHANGE — never on scroll-in.
+  const metaOpacity = useSharedValue(todo.done ? 0.4 : 1);
+  const prevDone = useRef(todo.done);
+
+  useEffect(() => {
+    if (prevDone.current === todo.done) return;
+    prevDone.current = todo.done;
+    metaOpacity.value = withTiming(todo.done ? 0.4 : 1, { duration: 220 });
+  }, [todo.done, metaOpacity]);
+
+  const metaFade = useAnimatedStyle(() => ({
+    opacity: metaOpacity.value,
+  }));
+
   // Tags are lifted out of the title and rendered on the meta line beneath it.
   // A todo that is *only* tags keeps them as its title instead, so they are not
   // printed twice.
@@ -137,10 +212,7 @@ export function TodoItem({
 
   const overdue = todo.due_at != null && !todo.done && isOverdue(todo.due_at);
   const hasMeta =
-    tags.length > 0 ||
-    todo.due_at != null ||
-    todo.estimated_hours != null ||
-    scheduled != null;
+    tags.length > 0 || todo.due_at != null || todo.estimated_hours != null || scheduled != null;
 
   return (
     // Vertical padding lives on the inner columns, not here: the guides must
@@ -187,7 +259,11 @@ export function TodoItem({
 
       <View
         className="flex-1 self-start"
-        style={{ gap: Layout.rowGap, marginLeft: 6, paddingVertical: Layout.rowPaddingY }}>
+        style={{
+          gap: Layout.rowGap,
+          marginLeft: 6,
+          paddingVertical: Layout.rowPaddingY,
+        }}>
         <View className="flex-row gap-2 items-start">
           <View className="flex-1">
             <Text
@@ -198,64 +274,59 @@ export function TodoItem({
           </View>
 
           {childCount > 0 ? (
-            <Pressable
-              hitSlop={10}
+            <CollapseToggle
+              collapsed={collapsed}
+              count={childCount}
               onPress={onToggleCollapse}
-              accessibilityRole="button"
-              accessibilityLabel={collapsed ? "Expand subtasks" : "Collapse subtasks"}
-              className="rounded-sm active:bg-elevated">
-              <Text
-                style={Type.meta}
-                className="text-fg-muted">
-                {collapsed ? "▸" : "▾"} {childCount}
-              </Text>
-            </Pressable>
+            />
           ) : null}
         </View>
 
         {hasMeta ? (
-          <View
-            className="flex-row flex-wrap items-center"
-            style={{ gap: Layout.metaGap, opacity: todo.done ? 0.4 : 1 }}>
-            {tags.map((tag) => (
-              <Tag
-                key={tag}
-                tag={tag}
-                colors={colors}
-              />
-            ))}
+          <Animated.View style={metaFade}>
+            <View
+              className="flex-row flex-wrap items-center"
+              style={{ gap: Layout.metaGap }}>
+              {tags.map((tag) => (
+                <Tag
+                  key={tag}
+                  tag={tag}
+                  colors={colors}
+                />
+              ))}
 
-            {todo.estimated_hours != null ? (
-              <Text
-                style={Type.meta}
-                className="text-ok">
-                {todo.estimated_hours}h
-              </Text>
-            ) : null}
-
-            {todo.due_at != null ? (
-              <Text
-                style={Type.meta}
-                className={overdue ? "text-danger" : "text-fg-muted"}>
-                {overdue ? "OVERDUE" : dueLabel(todo.due_at)}
-              </Text>
-            ) : null}
-
-            {scheduled ? (
-              <Pressable
-                hitSlop={8}
-                onPress={onPressScheduled}
-                accessibilityRole="button"
-                accessibilityLabel={`Scheduled ${scheduleLabel(scheduled)}`}
-                className="rounded-sm active:bg-elevated">
+              {todo.estimated_hours != null ? (
                 <Text
                   style={Type.meta}
-                  className="text-accent">
-                  {scheduleLabel(scheduled)}
+                  className="text-ok">
+                  {todo.estimated_hours}h
                 </Text>
-              </Pressable>
-            ) : null}
-          </View>
+              ) : null}
+
+              {todo.due_at != null ? (
+                <Text
+                  style={Type.meta}
+                  className={overdue ? "text-danger" : "text-fg-muted"}>
+                  {overdue ? "OVERDUE" : dueLabel(todo.due_at)}
+                </Text>
+              ) : null}
+
+              {scheduled ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={onPressScheduled}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Scheduled ${scheduleLabel(scheduled)}`}
+                  className="rounded-sm active:bg-elevated">
+                  <Text
+                    style={Type.meta}
+                    className="text-accent">
+                    {scheduleLabel(scheduled)}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Animated.View>
         ) : null}
       </View>
     </Pressable>

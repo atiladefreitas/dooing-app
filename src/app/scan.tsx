@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Type } from "@/constants/theme";
 import { ImportError, importFromHost } from "@/lib/api";
+import { pairWithHost } from "@/lib/pairing";
 import { parseShareUrl } from "@/lib/qr";
 
 /**
@@ -96,6 +97,12 @@ export default function ScanScreen() {
     append(`→ ${share.host}`, "info");
 
     try {
+      if (share.version === 2) {
+        await pairWithHost(share);
+        append("✓ paired", "ok");
+      } else {
+        append("· v1 QR — read-only import (update the plugin to pair)", "dim");
+      }
       const summary = await importFromHost(share.host);
       append(`✓ ${summary.imported} new · ${summary.updated} updated todos`, "ok");
       if (summary.blocksAvailable) {

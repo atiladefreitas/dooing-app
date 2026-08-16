@@ -14,10 +14,11 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
+import { AnimatedSplash } from '@/components/animated-splash';
 import { Font, useThemeColors } from '@/constants/theme';
 import { useBlocks } from '@/store/blocks';
 import { useTheme } from '@/store/theme';
@@ -31,6 +32,8 @@ export default function RootLayout() {
   const themeHydrated = useTheme((s) => s.hydrated);
   const { colorScheme } = useColorScheme();
   const c = useThemeColors();
+  const [splashDone, setSplashDone] = useState(false);
+  const finishSplash = useCallback(() => setSplashDone(true), []);
 
   const [fontsLoaded, fontError] = useFonts({
     JetBrainsMono_400Regular,
@@ -56,7 +59,8 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.canvas }}>
       <KeyboardProvider>
         <BottomSheetModalProvider>
-          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+          {/* The splash backdrop is always dark, so the bar stays light until it clears. */}
+          <StatusBar style={!splashDone || colorScheme === 'dark' ? 'light' : 'dark'} />
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: c.canvas },
@@ -72,6 +76,10 @@ export default function RootLayout() {
           </Stack>
         </BottomSheetModalProvider>
       </KeyboardProvider>
+
+      {/* The app renders (and settles) UNDER the splash, so the fade-out reveals
+          a finished first frame instead of catching layout mid-flight. */}
+      {!splashDone ? <AnimatedSplash onDone={finishSplash} /> : null}
     </GestureHandlerRootView>
   );
 }

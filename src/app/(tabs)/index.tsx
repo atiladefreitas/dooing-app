@@ -1,12 +1,15 @@
 import { router } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AddTodoSheet, AddTodoSheetRef } from "@/components/add-todo-sheet";
+import { Fab } from "@/components/fab";
 import { SectionHeader } from "@/components/section-header";
 import { TodoActionsSheet, TodoActionsSheetRef } from "@/components/todo-actions-sheet";
 import { TodoItem } from "@/components/todo-item";
+import { rowGlide, rowIn, rowOut } from "@/constants/motion";
 import { Type } from "@/constants/theme";
 import { todayKey } from "@/lib/date";
 import { scheduleMap } from "@/lib/schedule";
@@ -22,6 +25,8 @@ const TILDE_LINE = 20;
  *
  * Height comes from flex, never from the tildes themselves, so measuring it
  * cannot feed back into the content size and oscillate.
+ *
+ * The tildes cascade in top-to-bottom like a terminal painting its rows.
  */
 function TildeFill() {
   const [height, setHeight] = useState(0);
@@ -32,12 +37,15 @@ function TildeFill() {
       className="flex-1 overflow-hidden"
       onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
       {Array.from({ length: count }, (_, i) => (
-        <Text
+        <Animated.View
           key={i}
-          style={{ ...Type.meta, lineHeight: TILDE_LINE }}
-          className="text-fg-faint">
-          ~
-        </Text>
+          entering={FadeIn.delay(i * 14).duration(150)}>
+          <Text
+            style={{ ...Type.meta, lineHeight: TILDE_LINE }}
+            className="text-fg-faint">
+            ~
+          </Text>
+        </Animated.View>
       ))}
     </View>
   );
@@ -49,11 +57,13 @@ function EmptyState() {
     <View className="flex-1">
       <TildeFill />
       <View className="border-t border-line" />
-      <Text
-        style={Type.status}
-        className="pt-2 text-fg-muted">
-        &quot;todos&quot; — empty, scan a QR to import
-      </Text>
+      <Animated.View entering={FadeIn.delay(250).duration(200)}>
+        <Text
+          style={Type.status}
+          className="pt-2 text-fg-muted">
+          &quot;todos&quot; — empty · add one, or scan a QR to import
+        </Text>
+      </Animated.View>
     </View>
   );
 }
@@ -91,42 +101,50 @@ export default function HomeScreen() {
     <SafeAreaView
       edges={["bottom"]}
       className="flex-1 bg-canvas">
-      <FlatList
+      <Animated.FlatList
         data={isEmpty ? [] : data}
         keyExtractor={(item) =>
           item.kind === "section" ? `section:${item.key}` : item.row.todo.id
         }
-        renderItem={({ item }) =>
-          item.kind === "section" ? (
-            <SectionHeader
-              section={item.key}
-              count={item.count}
-              first={item.first}
-            />
-          ) : (
-            <TodoItem
-              todo={item.row.todo}
-              onToggle={() => toggle(item.row.todo.id)}
-              onLongPress={() =>
-                actionsRef.current?.present({
-                  id: item.row.todo.id,
-                  text: item.row.todo.text,
-                })
-              }
-              guides={item.row.guides}
-              childCount={item.row.childCount}
-              collapsed={collapsedSet.has(item.row.todo.id)}
-              onToggleCollapse={() => toggleCollapsed(item.row.todo.id)}
-              scheduled={scheduled[item.row.todo.id]}
-              onPressScheduled={() =>
-                router.push({
-                  pathname: "/calendar",
-                  params: { date: scheduled[item.row.todo.id]?.date },
-                })
-              }
-            />
-          )
-        }
+        // Toggling a todo re-sorts it into another section; stable keys mean the
+        // row GLIDES to its new slot instead of teleporting. New/removed rows
+        // (added todo, collapsed subtree, emptied section) fade in/out.
+        itemLayoutAnimation={rowGlide}
+        renderItem={({ item }) => (
+          <Animated.View
+            entering={rowIn}
+            exiting={rowOut}>
+            {item.kind === "section" ? (
+              <SectionHeader
+                section={item.key}
+                count={item.count}
+                first={item.first}
+              />
+            ) : (
+              <TodoItem
+                todo={item.row.todo}
+                onToggle={() => toggle(item.row.todo.id)}
+                onLongPress={() =>
+                  actionsRef.current?.present({
+                    id: item.row.todo.id,
+                    text: item.row.todo.text,
+                  })
+                }
+                guides={item.row.guides}
+                childCount={item.row.childCount}
+                collapsed={collapsedSet.has(item.row.todo.id)}
+                onToggleCollapse={() => toggleCollapsed(item.row.todo.id)}
+                scheduled={scheduled[item.row.todo.id]}
+                onPressScheduled={() =>
+                  router.push({
+                    pathname: "/calendar",
+                    params: { date: scheduled[item.row.todo.id]?.date },
+                  })
+                }
+              />
+            )}
+          </Animated.View>
+        )}
         ListEmptyComponent={EmptyState}
         // No row gap: the tree guides draw a continuous vertical line from a
         // parent into its subtree, and any gap would break it.
@@ -134,19 +152,11 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
       />
 
-      <Pressable
+      <Fab
         onPress={() => sheetRef.current?.present()}
         accessibilityLabel="Add task"
-        style={{ elevation: 8 }}
-        className="absolute right-6 bottom-8 justify-center items-center w-14 h-14 rounded-full bg-accent active:opacity-80">
-        {/* text-canvas = the app background colour, which contrasts against the
-            accent in BOTH themes; a literal white only works in light mode. */}
-        <Text
-          style={{ ...Type.body, fontSize: 24, lineHeight: 28 }}
-          className="text-canvas">
-          +
-        </Text>
-      </Pressable>
+        style={{ right: 24, bottom: 32 }}
+      />
 
       <AddTodoSheet ref={sheetRef} />
       <TodoActionsSheet

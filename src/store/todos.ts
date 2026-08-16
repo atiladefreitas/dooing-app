@@ -97,7 +97,7 @@ export const useTodos = create<TodosState>()(
         set((s) => ({
           todos: s.todos.map((t) => {
             if (t.id !== id) return t;
-            const next: Todo = { ...t, ...patch, _dirty: true };
+            const next: Todo = { ...t, ...patch, updated_at: nowSeconds(), _dirty: true };
             // Keep category in sync with text unless caller set it explicitly.
             if (patch.text !== undefined && patch.category === undefined) {
               next.category = extractCategory(next.text);
@@ -110,7 +110,9 @@ export const useTodos = create<TodosState>()(
       toggleStatus: (id) => {
         set((s) => ({
           todos: s.todos.map((t) =>
-            t.id === id ? { ...t, ...nextStatusPatch(t), _dirty: true } : t
+            t.id === id
+              ? { ...t, ...nextStatusPatch(t), updated_at: nowSeconds(), _dirty: true }
+              : t
           ),
         }));
       },

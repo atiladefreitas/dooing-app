@@ -1,7 +1,7 @@
 import { CATEGORY_HUES, Palette, ThemeName } from '@/constants/theme';
 import { Block, Recurrence, RecurrenceType } from '@/types/block';
 
-import { dateKey, parseKey, weekdayOf } from './date';
+import { addDays, dateKey, parseKey, weekdayOf } from './date';
 import { hashTag } from './palette';
 
 export const GRANULARITY = 30;
@@ -33,7 +33,29 @@ export function endMin(block: Block): number {
   return block.start_min + block.duration_min;
 }
 
-export function occursOn(block: Block, date: string): boolean {
+/**
+ * Occurrence logic — a port of bloocky's state.lua (span_days / excluded /
+ * starts_on / occurs_on), which is the reference implementation. Three rules
+ * it gets right that the previous version here did not:
+ *  - an exdate removes the WHOLE occurrence, span included;
+ *  - only all-day blocks span days (duration ÷ 1440, capped at 366 so a
+ *    malformed duration cannot turn a render into a long loop);
+ *  - a multi-day all-day block covers every day it runs over, found by
+ *    looking back from the queried date to a start.
+ */
+
+function spanDays(block: Block): number {
+  if (!block.all_day) return 1;
+  return Math.max(1, Math.min(366, Math.ceil((block.duration_min || DAY_MINUTES) / DAY_MINUTES)));
+}
+
+function excluded(block: Block, date: string): boolean {
+  return (block.recurrence?.exdates ?? []).includes(date);
+}
+
+/** Whether an occurrence *begins* on the given day. */
+function startsOn(block: Block, date: string): boolean {
+  if (excluded(block, date)) return false;
   const r = block.recurrence;
   if (!r || typeof r !== 'object') return block.date === date;
   if (date < block.date) return false;
@@ -53,8 +75,28 @@ export function occursOn(block: Block, date: string): boolean {
   }
 }
 
+/** Whether a block covers the given day (spans count every day they run over). */
+export function occursOn(block: Block, date: string): boolean {
+  if (startsOn(block, date)) return true;
+  const span = spanDays(block);
+  for (let back = 1; back < span; back += 1) {
+    if (startsOn(block, addDays(date, -back))) return true;
+  }
+  return false;
+}
+
+/**
+ * All blocks covering a date. All-day blocks come first — they are drawn above
+ * the hour grid, not in it — and the rest sort by start time (same rule as
+ * bloocky's blocks_for_date).
+ */
 export function blocksForDate(all: Block[], date: string): Block[] {
-  return all.filter((b) => occursOn(b, date)).sort((a, b) => a.start_min - b.start_min);
+  return all
+    .filter((b) => occursOn(b, date))
+    .sort((a, b) => {
+      if (!a.all_day !== !b.all_day) return a.all_day ? -1 : 1;
+      return a.start_min - b.start_min;
+    });
 }
 
 export function blocksByDate(all: Block[], dates: string[]): Record<string, Block[]> {
@@ -84,6 +126,10 @@ function toNumber(value: unknown, fallback: number): number {
 
 const RECURRENCE_TYPES: RecurrenceType[] = ['daily', 'weekly', 'weekdays', 'custom'];
 
+export function isValidKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 function normalizeRecurrence(raw: unknown): Recurrence | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -100,11 +146,23 @@ function normalizeRecurrence(raw: unknown): Recurrence | null {
   if (typeof r.until_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.until_date)) {
     out.until_date = r.until_date;
   }
+  const exdates = Array.isArray(r.exdates) ? r.exdates.filter(isValidKey) : [];
+  if (exdates.length) out.exdates = exdates;
   return out;
 }
 
-export function isValidKey(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+/**
+ * Wire-contract fields beyond the validated core, carried through verbatim.
+ * `updated_at`, `source` and `all_day` are OPTIONAL in bloocky 1.1.0 — absent
+ * stays absent (a Lua reader distinguishes absent from null).
+ */
+function optionalWireFields(r: Record<string, unknown>): Partial<Block> {
+  const out: Partial<Block> = {};
+  const updated = toNumber(r.updated_at, 0);
+  if (updated > 0) out.updated_at = updated;
+  if (typeof r.source === 'string' && r.source !== '') out.source = r.source;
+  if (r.all_day === true) out.all_day = true;
+  return out;
 }
 
 export function normalizeBlock(raw: unknown): Block | null {
@@ -115,16 +173,26 @@ export function normalizeBlock(raw: unknown): Block | null {
   if (!title) return null;
   if (!isValidKey(r.date)) return null;
 
-  const start_min = clampStart(toNumber(r.start_min, 0));
+  const all_day = r.all_day === true;
+  const start_min = all_day ? 0 : clampStart(toNumber(r.start_min, 0));
   return {
+    // Spread the raw object FIRST: keys this app does not know about (written
+    // by bloocky, or by a future bloocky) must survive the round trip.
+    // Validated fields then overwrite their raw counterparts.
+    ...(r as object),
     id: r.id != null ? String(r.id) : generateBlockId(),
     title,
     date: r.date,
     start_min,
-    duration_min: clampDuration(toNumber(r.duration_min, MIN_DURATION), start_min),
+    // An all-day block's duration carries its span in whole days — clamping
+    // it to the end of one day would truncate every multi-day holiday.
+    duration_min: all_day
+      ? Math.max(DAY_MINUTES, toNumber(r.duration_min, DAY_MINUTES))
+      : clampDuration(toNumber(r.duration_min, MIN_DURATION), start_min),
     notes: typeof r.notes === 'string' ? r.notes.trim() : '',
     recurrence: normalizeRecurrence(r.recurrence),
     created_at: toNumber(r.created_at, nowSeconds()),
+    ...optionalWireFields(r),
   };
 }
 
@@ -139,6 +207,7 @@ interface BlockDraft {
 
 export function createBlock(draft: BlockDraft): Block {
   const start_min = clampStart(draft.start_min);
+  const created = nowSeconds();
   return {
     id: generateBlockId(),
     title: draft.title.trim(),
@@ -147,21 +216,34 @@ export function createBlock(draft: BlockDraft): Block {
     duration_min: clampDuration(draft.duration_min, start_min),
     notes: (draft.notes ?? '').trim(),
     recurrence: normalizeRecurrence(draft.recurrence),
-    created_at: nowSeconds(),
+    created_at: created,
+    updated_at: created,
+    // "Belongs here", not "not yet pushed": a block with no calendar and no
+    // paired device travels no road at all, and that is a correct end state.
+    source: 'local',
   };
 }
 
+/**
+ * Re-validate a block after an edit. NOT a whitelist: unknown keys ride
+ * through (the spread), `updated_at` is bumped, and `source`/`all_day` are
+ * preserved. An all-day block's timing is not touched at all — the app has no
+ * way to express "a date, not a time", so it must not rewrite one.
+ */
 export function toWireBlock(block: Block): Block {
+  if (block.all_day) {
+    return { ...block, title: block.title.trim(), notes: block.notes.trim(), updated_at: nowSeconds() };
+  }
   const start_min = clampStart(block.start_min);
   return {
-    id: block.id,
+    ...block,
     title: block.title.trim(),
     date: block.date,
     start_min,
     duration_min: clampDuration(block.duration_min, start_min),
     notes: block.notes.trim(),
     recurrence: normalizeRecurrence(block.recurrence),
-    created_at: block.created_at,
+    updated_at: nowSeconds(),
   };
 }
 

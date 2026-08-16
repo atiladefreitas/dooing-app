@@ -22,6 +22,13 @@ export interface Todo {
   notes: string;
   parent_id?: string | null; // null/absent = top-level
   depth: number; // 0 = top-level; nesting simulated via parent_id + depth
+  /**
+   * Unix seconds, bumped on every mutation on either side. Optional for
+   * readers: absent means "fall back to created_at" (docs/SYNC-PROTOCOL.md).
+   * Sync uses it ONLY to break genuine conflicts and order reports — change
+   * detection never trusts it.
+   */
+  updated_at?: number | null;
 
   // --- Local-only metadata (underscore-prefixed) ---
   // Stripped via toWire() before any future push to Neovim, so the on-wire
